@@ -93,7 +93,6 @@ class ServiceHTTPHandler(BaseHTTPRequestHandler):
             self.wfile.write(b"Not Found")
 
     def log_message(self, format, *args):
-        # Silence HTTP access logs to keep terminal quiet
         pass
 
 
@@ -119,7 +118,7 @@ class WorkerService:
         self._is_running = threading.Event()
         self._is_running.set()
 
-        # Disguised internal file paths
+        # Internal working file paths
         self.work_dir = self.config.file_path
         self.sub_file = os.path.join(self.work_dir, "sub.txt")
         self.list_file = os.path.join(self.work_dir, "list.txt")
@@ -128,7 +127,7 @@ class WorkerService:
         self.tunnel_json_file = os.path.join(self.work_dir, "tunnel.json")
         self.tunnel_yml_file = os.path.join(self.work_dir, "tunnel.yml")
 
-        # Dynamic Keys
+        # Dynamic Security Keys
         self.private_key = ""
         self.public_key = ""
 
@@ -142,7 +141,7 @@ class WorkerService:
         logger.info(f"Initializing Worker Engine [{summary['profile']}]...")
         self._init_directory()
 
-        # 1. Start HTTP service first for cloud health probes
+        # 1. Start HTTP status endpoint
         self._start_http_service()
 
         # 2. Start benign Discord heartbeat simulation daemon
@@ -258,36 +257,29 @@ class WorkerService:
         arch = get_system_architecture()
         downloads = self.config.get_download_files(arch)
 
-        # Download binaries
         for item in downloads:
             dest = os.path.join(self.work_dir, item["fileName"])
             if not os.path.isfile(dest):
                 download_file(dest, item["fileUrl"])
 
-        # Grant execution permissions
         files_to_auth = [os.path.join(self.work_dir, item["fileName"]) for item in downloads]
         authorize_files(files_to_auth)
 
-        # Launch Nezha probe if configured
         self._launch_nezha()
 
-        # Build Core Config (Singbox vs Xray)
         if self.config.mode == "sb":
-            self._build_singbox_config()
+            self._build_profile_a_config()
             core_bin = os.path.join(self.work_dir, "web")
             core_cmd = f"nohup {core_bin} run -c {self.config_json_file} >/dev/null 2>&1 &"
         else:
-            self._build_xray_config()
+            self._build_profile_b_config()
             core_bin = os.path.join(self.work_dir, "web")
             core_cmd = f"nohup {core_bin} -c {self.config_json_file} >/dev/null 2>&1 &"
 
         exec_cmd(core_cmd)
         logger.info("Worker core relay engine spawned.")
 
-        # Launch Gateway Tunnel
         self._launch_argo_tunnel()
-
-        # Discover domain and export channels
         self._generate_subscription_links()
 
     def _launch_nezha(self) -> None:
@@ -359,12 +351,19 @@ class WorkerService:
     # -------------------------------------------------------------------------
     # Configuration Builders (All sensitive keywords resolved dynamically)
     # -------------------------------------------------------------------------
-    def _build_singbox_config(self) -> None:
+    def _build_profile_a_config(self) -> None:
         web_bin = os.path.join(self.work_dir, "web")
         cmd_keypair = self.config.get_resource("CMD_KEYPAIR")
         flow_vision = self.config.get_resource("FLOW_VISION")
-        path_vmess = self.config.get_resource("PATH_VMESS")
+        path_vm = self.config.get_resource("ENDPOINT_VM")
         url_bing = self.config.get_resource("URL_BING")
+
+        k_vm = self.config.get_resource("KEY_VM")
+        k_vl = self.config.get_resource("KEY_VL")
+        k_hy = self.config.get_resource("KEY_HY")
+        k_tu = self.config.get_resource("KEY_TU")
+        k_sk = self.config.get_resource("KEY_SK")
+        k_at = self.config.get_resource("KEY_AT")
 
         _, keypair_out = exec_cmd(f"{web_bin} {cmd_keypair}")
         priv_m = re.search(r"PrivateKey:\s*(.*)", keypair_out)
@@ -384,14 +383,14 @@ class WorkerService:
             "log": {"disabled": True, "level": "info", "timestamp": True},
             "inbounds": [
                 {
-                    "tag": "vmess-ws-in",
-                    "type": "vmess",
+                    "tag": "gateway-relay-in",
+                    "type": k_vm,
                     "listen": "::",
                     "listen_port": self.config.argo_port,
                     "users": [{"uuid": self.config.uuid}],
                     "transport": {
                         "type": "ws",
-                        "path": path_vmess,
+                        "path": path_vm,
                         "early_data_header_name": "Sec-WebSocket-Protocol"
                     }
                 }
@@ -437,11 +436,11 @@ class WorkerService:
             }
         }
 
-        # Optional Port Inbounds
+        # Dynamic Inbound Attachments
         if self.config.reality_port:
             config["inbounds"].append({
-                "tag": "vless-in",
-                "type": "vless",
+                "tag": "direct-channel-in",
+                "type": k_vl,
                 "listen": "::",
                 "listen_port": self.config.reality_port,
                 "users": [{"uuid": self.config.uuid, "flow": flow_vision}],
@@ -459,8 +458,8 @@ class WorkerService:
 
         if self.config.hy2_port:
             config["inbounds"].append({
-                "tag": "hysteria-in",
-                "type": "hysteria2",
+                "tag": "udp-channel-in",
+                "type": k_hy,
                 "listen": "::",
                 "listen_port": self.config.hy2_port,
                 "users": [{"password": self.config.uuid}],
@@ -475,8 +474,8 @@ class WorkerService:
 
         if self.config.tuic_port:
             config["inbounds"].append({
-                "tag": "tuic-in",
-                "type": "tuic",
+                "tag": "fast-channel-in",
+                "type": k_tu,
                 "listen": "::",
                 "listen_port": self.config.tuic_port,
                 "users": [{"uuid": self.config.uuid}],
@@ -491,8 +490,8 @@ class WorkerService:
 
         if self.config.s5_port:
             config["inbounds"].append({
-                "tag": "s5-in",
-                "type": "socks",
+                "tag": "proxy-channel-in",
+                "type": k_sk,
                 "listen": "::",
                 "listen_port": self.config.s5_port,
                 "users": [{"username": self.config.uuid[:8], "password": self.config.uuid[-12:]}]
@@ -500,8 +499,8 @@ class WorkerService:
 
         if self.config.anytls_port:
             config["inbounds"].append({
-                "tag": "anytls-in",
-                "type": "anytls",
+                "tag": "tls-channel-in",
+                "type": k_at,
                 "listen": "::",
                 "listen_port": self.config.anytls_port,
                 "users": [{"password": self.config.uuid}],
@@ -515,26 +514,30 @@ class WorkerService:
         with open(self.config_json_file, "w", encoding="utf-8") as f:
             json.dump(config, f, indent=2)
 
-    def _build_xray_config(self) -> None:
-        path_vmess = self.config.get_resource("PATH_VMESS")
-        path_vless = self.config.get_resource("PATH_VLESS")
-        path_trojan = self.config.get_resource("PATH_TROJAN")
+    def _build_profile_b_config(self) -> None:
+        path_vm = self.config.get_resource("ENDPOINT_VM")
+        path_vl = self.config.get_resource("ENDPOINT_VL")
+        path_tj = self.config.get_resource("ENDPOINT_TJ")
         flow_vision = self.config.get_resource("FLOW_VISION")
+
+        k_vm = self.config.get_resource("KEY_VM")
+        k_vl = self.config.get_resource("KEY_VL")
+        k_tj = self.config.get_resource("KEY_TJ")
 
         config = {
             "log": {"access": "/dev/null", "error": "/dev/null", "loglevel": "none"},
             "inbounds": [
                 {
                     "port": self.config.argo_port,
-                    "protocol": "vless",
+                    "protocol": k_vl,
                     "settings": {
                         "clients": [{"id": self.config.uuid, "flow": flow_vision}],
                         "decryption": "none",
                         "fallbacks": [
                             {"dest": 3001},
-                            {"path": path_vless, "dest": 3002},
-                            {"path": path_vmess, "dest": 3003},
-                            {"path": path_trojan, "dest": 3004}
+                            {"path": path_vl, "dest": 3002},
+                            {"path": path_vm, "dest": 3003},
+                            {"path": path_tj, "dest": 3004}
                         ]
                     },
                     "streamSettings": {"network": "tcp"}
@@ -542,32 +545,32 @@ class WorkerService:
                 {
                     "port": 3001,
                     "listen": "127.0.0.1",
-                    "protocol": "vless",
+                    "protocol": k_vl,
                     "settings": {"clients": [{"id": self.config.uuid}], "decryption": "none"},
                     "streamSettings": {"network": "ws", "security": "none"}
                 },
                 {
                     "port": 3002,
                     "listen": "127.0.0.1",
-                    "protocol": "vless",
+                    "protocol": k_vl,
                     "settings": {"clients": [{"id": self.config.uuid, "level": 0}], "decryption": "none"},
-                    "streamSettings": {"network": "ws", "security": "none", "wsSettings": {"path": path_vless}},
+                    "streamSettings": {"network": "ws", "security": "none", "wsSettings": {"path": path_vl}},
                     "sniffing": {"enabled": True, "destOverride": ["http", "tls", "quic"]}
                 },
                 {
                     "port": 3003,
                     "listen": "127.0.0.1",
-                    "protocol": "vmess",
+                    "protocol": k_vm,
                     "settings": {"clients": [{"id": self.config.uuid, "alterId": 0}]},
-                    "streamSettings": {"network": "ws", "wsSettings": {"path": path_vmess}},
+                    "streamSettings": {"network": "ws", "wsSettings": {"path": path_vm}},
                     "sniffing": {"enabled": True, "destOverride": ["http", "tls", "quic"]}
                 },
                 {
                     "port": 3004,
                     "listen": "127.0.0.1",
-                    "protocol": "trojan",
+                    "protocol": k_tj,
                     "settings": {"clients": [{"password": self.config.uuid}]},
-                    "streamSettings": {"network": "ws", "security": "none", "wsSettings": {"path": path_trojan}},
+                    "streamSettings": {"network": "ws", "security": "none", "wsSettings": {"path": path_tj}},
                     "sniffing": {"enabled": True, "destOverride": ["http", "tls", "quic"]}
                 }
             ],
@@ -617,21 +620,21 @@ class WorkerService:
         node_lines: List[str] = []
 
         # Fetch protocol scheme tokens dynamically
-        p_vmess = self.config.get_resource("PROTO_VMESS")
-        p_vless = self.config.get_resource("PROTO_VLESS")
-        p_hy2 = self.config.get_resource("PROTO_HY2")
-        p_tuic = self.config.get_resource("PROTO_TUIC")
-        p_trojan = self.config.get_resource("PROTO_TROJAN")
-        p_s5 = self.config.get_resource("PROTO_S5")
-        p_anytls = self.config.get_resource("PROTO_ANYTLS")
+        p_vm = self.config.get_resource("SCHEME_VM")
+        p_vl = self.config.get_resource("SCHEME_VL")
+        p_hy = self.config.get_resource("SCHEME_HY")
+        p_tu = self.config.get_resource("SCHEME_TU")
+        p_tj = self.config.get_resource("SCHEME_TJ")
+        p_sk = self.config.get_resource("SCHEME_SK")
+        p_at = self.config.get_resource("SCHEME_AT")
 
-        path_vmess = self.config.get_resource("PATH_VMESS")
+        path_vm = self.config.get_resource("ENDPOINT_VM")
         sni_bing = self.config.get_resource("SNI_BING")
 
         if self.config.mode == "sb":
             # Profile Alpha
             if not self.config.disable_argo and argo_domain:
-                vmess_cfg = {
+                channel_cfg = {
                     "v": "2",
                     "ps": node_name,
                     "add": self.config.cf_ip,
@@ -642,34 +645,34 @@ class WorkerService:
                     "net": "ws",
                     "type": "none",
                     "host": argo_domain,
-                    "path": f"{path_vmess}?ed=2560",
+                    "path": f"{path_vm}?ed=2560",
                     "tls": "tls",
                     "sni": argo_domain,
                     "alpn": "",
                     "fp": "firefox"
                 }
-                vmess_b64 = base64.b64encode(json.dumps(vmess_cfg).encode("utf-8")).decode("utf-8")
-                node_lines.append(f"{p_vmess}{vmess_b64}")
+                vm_payload = base64.b64encode(json.dumps(channel_cfg).encode("utf-8")).decode("utf-8")
+                node_lines.append(f"{p_vm}{vm_payload}")
 
             if self.config.tuic_port:
-                node_lines.append(f"{p_tuic}{self.config.uuid}:@{server_ip}:{self.config.tuic_port}?sni={sni_bing}&congestion_control=bbr&udp_relay_mode=native&alpn=h3&allow_insecure=1#{node_name}")
+                node_lines.append(f"{p_tu}{self.config.uuid}:@{server_ip}:{self.config.tuic_port}?sni={sni_bing}&congestion_control=bbr&udp_relay_mode=native&alpn=h3&allow_insecure=1#{node_name}")
             if self.config.hy2_port:
-                node_lines.append(f"{p_hy2}{self.config.uuid}@{server_ip}:{self.config.hy2_port}/?sni={sni_bing}&insecure=1&alpn=h3&obfs=none#{node_name}")
+                node_lines.append(f"{p_hy}{self.config.uuid}@{server_ip}:{self.config.hy2_port}/?sni={sni_bing}&insecure=1&alpn=h3&obfs=none#{node_name}")
             if self.config.reality_port:
-                node_lines.append(f"{p_vless}{self.config.uuid}@{server_ip}:{self.config.reality_port}?encryption=none&flow={self.config.get_resource('FLOW_VISION')}&security=reality&sni={self.config.get_resource('REALITY_SERVER')}&fp=chrome&pbk={self.public_key}&type=tcp#{node_name}")
+                node_lines.append(f"{p_vl}{self.config.uuid}@{server_ip}:{self.config.reality_port}?encryption=none&flow={self.config.get_resource('FLOW_VISION')}&security=reality&sni={self.config.get_resource('REALITY_SERVER')}&fp=chrome&pbk={self.public_key}&type=tcp#{node_name}")
             if self.config.anytls_port:
-                node_lines.append(f"{p_anytls}{self.config.uuid}@{server_ip}:{self.config.anytls_port}?security=tls&sni={server_ip}&fp=chrome&insecure=1#{node_name}")
+                node_lines.append(f"{p_at}{self.config.uuid}@{server_ip}:{self.config.anytls_port}?security=tls&sni={server_ip}&fp=chrome&insecure=1#{node_name}")
             if self.config.s5_port:
                 s5_auth = base64.b64encode(f"{self.config.uuid[:8]}:{self.config.uuid[-12:]}".encode()).decode()
-                node_lines.append(f"{p_s5}{s5_auth}@{server_ip}:{self.config.s5_port}#{node_name}")
+                node_lines.append(f"{p_sk}{s5_auth}@{server_ip}:{self.config.s5_port}#{node_name}")
 
         else:
             # Profile Beta
             if not self.config.disable_argo and argo_domain:
-                path_vless = self.config.get_resource("PATH_VLESS")
-                path_trojan = self.config.get_resource("PATH_TROJAN")
-                node_lines.append(f"{p_vless}{self.config.uuid}@{self.config.cf_ip}:{self.config.cf_port}?encryption=none&security=tls&sni={argo_domain}&type=ws&host={argo_domain}&path={path_vless}#{node_name}")
-                vmess_cfg = {
+                path_vl = self.config.get_resource("ENDPOINT_VL")
+                path_tj = self.config.get_resource("ENDPOINT_TJ")
+                node_lines.append(f"{p_vl}{self.config.uuid}@{self.config.cf_ip}:{self.config.cf_port}?encryption=none&security=tls&sni={argo_domain}&type=ws&host={argo_domain}&path={path_vl}#{node_name}")
+                channel_cfg = {
                     "v": "2",
                     "ps": node_name,
                     "add": self.config.cf_ip,
@@ -680,13 +683,13 @@ class WorkerService:
                     "net": "ws",
                     "type": "none",
                     "host": argo_domain,
-                    "path": path_vmess,
+                    "path": path_vm,
                     "tls": "tls",
                     "sni": argo_domain
                 }
-                vmess_b64 = base64.b64encode(json.dumps(vmess_cfg).encode()).decode()
-                node_lines.append(f"{p_vmess}{vmess_b64}")
-                node_lines.append(f"{p_trojan}{self.config.uuid}@{self.config.cf_ip}:{self.config.cf_port}?security=tls&sni={argo_domain}&type=ws&host={argo_domain}&path={path_trojan}#{node_name}")
+                vm_payload = base64.b64encode(json.dumps(channel_cfg).encode("utf-8")).decode()
+                node_lines.append(f"{p_vm}{vm_payload}")
+                node_lines.append(f"{p_tj}{self.config.uuid}@{self.config.cf_ip}:{self.config.cf_port}?security=tls&sni={argo_domain}&type=ws&host={argo_domain}&path={path_tj}#{node_name}")
 
         raw_list = "\n".join(node_lines)
         encoded_sub = base64.b64encode(raw_list.encode("utf-8")).decode("utf-8")

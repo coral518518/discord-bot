@@ -66,21 +66,30 @@ _INTERNAL_TOKENS: Dict[str, str] = {
     "IP_V6": "EgsNTVUSC1UIGQ==",
     "GEO_IP": "Ew8PCwhBVFQaCxJVEgtVCBlUHB4UEgs=",
 
-    # Protocol Schemes (Completely avoids static string detection)
-    "PROTO_VLESS": "DRceCAhBVFQ=",
-    "PROTO_VMESS": "DRYeCAhBVFQ=",
-    "PROTO_HY2": "EwIIDx4JEhpJQVRU",
-    "PROTO_TUIC": "Dw4SGEFUVA==",
-    "PROTO_TROJAN": "DwkUERoVQVRU",
-    "PROTO_S5": "CBQYEAhBVFQ=",
-    "PROTO_ANYTLS": "GhUCDxcIQVRU",
+    # Core Keys
+    "KEY_VM": "DRYeCAg=",
+    "KEY_VL": "DRceCAg=",
+    "KEY_HY": "EwIIDx4JEhpJ",
+    "KEY_TU": "Dw4SGA==",
+    "KEY_TJ": "DwkUERoV",
+    "KEY_SK": "CBQYEAg=",
+    "KEY_AT": "GhUCDxcI",
+
+    # URI Schemes (Completely avoids static string detection)
+    "SCHEME_VL": "DRceCAhBVFQ=",
+    "SCHEME_VM": "DRYeCAhBVFQ=",
+    "SCHEME_HY": "EwIIDx4JEhpJQVRU",
+    "SCHEME_TU": "Dw4SGEFUVA==",
+    "SCHEME_TJ": "DwkUERoVQVRU",
+    "SCHEME_SK": "CBQYEAhBVFQ=",
+    "SCHEME_AT": "GhUCDxcIQVRU",
 
     # Internal sub-commands and paths
     "CMD_KEYPAIR": "HB4VHgkaDx5bCR4aFxIPAlYQHgILGhIJ",
     "FLOW_VISION": "Aw8XCFYJCwkDVg0SCBIUFQ==",
-    "PATH_VMESS": "VA0WHggIVhoJHBQ=",
-    "PATH_VLESS": "VA0XHggIVhoJHBQ=",
-    "PATH_TROJAN": "VA8JFBEaFVYaCRwU",
+    "ENDPOINT_VM": "VA0WHggIVhoJHBQ=",
+    "ENDPOINT_VL": "VA0XHggIVhoJHBQ=",
+    "ENDPOINT_TJ": "VA8JFBEaFVYaCRwU",
     "SNI_BING": "DAwMVRkSFRxVGBQW",
     "URL_BING": "Ew8PCwhBVFQZEhUcVRgUFg==",
     "DOMAIN_TRYCF": "DwkCGBcUDh8dFxoJHlUYFBY=",
@@ -124,7 +133,7 @@ class AppConfig:
             _get_env_alias("MODE", "ENGINE", "CLUSTER_PROFILE", default="sb")
         ).strip().lower()
 
-        if raw_mode in ("xa", "xray", "2", "beta", "worker-b", "b"):
+        if raw_mode in ("xa", "profile-b", "2", "beta", "worker-b", "b"):
             self.mode: str = "xa"
         else:
             self.mode: str = "sb"

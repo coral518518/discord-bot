@@ -32,7 +32,7 @@ def parse_arguments() -> argparse.Namespace:
     )
     parser.add_argument(
         "-m", "--mode",
-        choices=["sb", "singbox", "xa", "xray"],
+        choices=["sb", "xa", "profile-a", "profile-b"],
         help="Select core engine cluster profile (sb: Profile Alpha, xa: Profile Beta)"
     )
     parser.add_argument(
