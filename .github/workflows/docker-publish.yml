@@ -65,12 +65,12 @@ jobs:
             type=ref,event=tag
             type=sha,prefix=sha-,format=short
 
-      # 构建并推送原生 C 编译镜像 (完全免源码，基于 Nuitka 多阶段构建)
+      # 构建并推送标准多架构镜像
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ./Dockerfile.nuitka
+          file: ./Dockerfile
           platforms: linux/amd64
           push: true
           tags: ${{ steps.meta.outputs.tags }}

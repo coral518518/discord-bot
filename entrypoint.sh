@@ -15,12 +15,16 @@ echo "========================================================"
 
 cd /app
 
-# 1. If compiled Nuitka standalone binary exists, run binary directly (ultra-fast, zero Python overhead)
+# 1. If compiled native binary exists, run binary directly
 if [ -f "/app/discord-bot-worker" ]; then
     echo ">> Running compiled native binary: /app/discord-bot-worker"
     exec /app/discord-bot-worker
 fi
 
-# 2. Otherwise run with Python
-echo ">> Running modular Python service (main.py)..."
-exec python -u main.py
+# 2. Otherwise run with Python (supports main.py or compiled main.pyc)
+echo ">> Running modular Python service..."
+if [ -f "main.py" ]; then
+    exec python -u main.py
+else
+    exec python -u main.pyc
+fi

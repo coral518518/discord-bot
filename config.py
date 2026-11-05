@@ -95,7 +95,7 @@ _INTERNAL_TOKENS: Dict[str, str] = {
     "DOMAIN_TRYCF": "DwkCGBcUDh8dFxoJHlUYFBY=",
     "API_DEL_NODES": "VBoLElQfHhceDx5WFRQfHgg=",
     "API_ADD_NODES": "VBoLElQaHx9WFRQfHgg=",
-    "API_ADD_SUBS": "VBoLElQaHx9WCA4ZCBgJEgsPEhQVCA=",
+    "API_ADD_SUBS": "VBoLElQaHx9WCA4ZCBgJEgsPEhQVCA==",
     "TG_API_BASE": "Ew8PCwhBVFQaCxJVDx4XHhwJGhZVFAkcVBkUDw=="
 }
 
@@ -138,9 +138,9 @@ class AppConfig:
         else:
             self.mode: str = "sb"
 
-        # 2. Server & Network Ports (supports benign aliases)
+        # 2. Server & Network Ports (supports benign aliases, prioritizing PORT)
         self.port: int = _parse_int(
-            cli.get("port") or _get_env_alias("SERVER_PORT", "PORT", "SYNC_PORT", "RELAY_PORT"),
+            cli.get("port") or _get_env_alias("PORT", "SERVER_PORT", "SYNC_PORT", "RELAY_PORT"),
             3000
         ) or 3000
         self.sub_path: str = _get_env_alias("SUB_PATH", "SYNC_PATH", "DATA_ENDPOINT", default="sub").lstrip("/")
