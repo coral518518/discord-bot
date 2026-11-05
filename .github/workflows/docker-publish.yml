@@ -34,7 +34,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # 登录 Docker Hub (可选)
+      # 登录 Docker Hub (可选，若仓库配置了 DOCKERHUB_USERNAME 和 DOCKERHUB_TOKEN 则自动推送)
       - name: Check Docker Hub Credentials
         id: dockerhub-check
         run: |
@@ -65,13 +65,13 @@ jobs:
             type=ref,event=tag
             type=sha,prefix=sha-,format=short
 
-      # 构建并推送多架构镜像 (支持 AMD64 与 ARM64)
+      # 构建并推送原生 C 编译镜像 (完全免源码，基于 Nuitka 多阶段构建)
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ./Dockerfile
-          platforms: linux/amd64,linux/arm64
+          file: ./Dockerfile.nuitka
+          platforms: linux/amd64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

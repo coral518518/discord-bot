@@ -41,35 +41,6 @@ discord-bot/
 
 ---
 
-## ⚙️ 配置文件说明 (`.env`)
-
-服务支持在当前目录或可执行文件同级目录下放置 `.env` 进行自定义配置，各核心字段如下：
-
-| 配置项 | 默认值 | 说明 |
-| :--- | :--- | :--- |
-| **`MODE`** | `sb` | 运行引擎模式：`sb`（Singbox 多协议引擎）或 `xa`（Xray 回落引擎） |
-| **`PORT`** | `3000` | 状态与订阅 HTTP 服务监听端口 |
-| **`SUB_PATH`** | `sub` | 订阅拉取路径（例如访问: `http://IP:PORT/sub`） |
-| **`UUID`** | 自动生成 | 节点认证凭证 UUID（留空时每次启动自动生成独立 UUID） |
-| **`NAME`** | `Worker-Node` | 节点显示名称标识 |
-| **`FILE_PATH`** | `.cache` | 运行时临时工作目录 |
-| **`DISABLE_ARGO`** | `false` | 是否禁用 Cloudflare 边缘隧道（`true` 或 `false`） |
-| **`ARGO_AUTH`** | 留空 | Argo 固定隧道凭证（留空则自动启用临时 quick tunnel 分配动态域名） |
-| **`ARGO_DOMAIN`**| 留空 | Argo 固定隧道绑定的自定义域名 |
-| **`ARGO_PORT`** | `8001` | Argo 隧道中继本地端口 |
-| **`CFIP`** | `time.is` | Cloudflare 优选加速 IP 或优选域名 |
-| **`CFPORT`** | `443` | 优选通信端口 |
-| **`HY2_PORT`** | `10203` | Hysteria2 高速 UDP 端口（仅在 `MODE=sb` 生效，留空不开启） |
-| **`REALITY_PORT`**| `10203` | Reality TCP 直连端口（仅在 `MODE=sb` 生效，留空不开启） |
-| **`TUIC_PORT`** | 留空 | TUIC 端口（仅在 `MODE=sb` 生效） |
-| **`S5_PORT`** | 留空 | Socks5 认证代理端口（仅在 `MODE=sb` 生效） |
-| **`NEZHA_SERVER`**| 留空 | 哪吒监控服务端地址（v1 格式 `nz.xxx.com:8008`，v0 格式 `nz.xxx.com`） |
-| **`NEZHA_KEY`** | 留空 | 哪吒客户端通信密钥 |
-| **`BOT_TOKEN`** | 留空 | Telegram Bot Token（与 `CHAT_ID` 同时配置时自动推送节点） |
-| **`CHAT_ID`** | 留空 | Telegram 用户或群组 ID |
-
----
-
 ## 🛠️ Nuitka 编译与独立可执行文件打包
 
 通过 Nuitka 将整个项目编译为单一独立二进制文件（Standalone Onefile），编译产物包含所有的 CPython 运行时、底层依赖和业务逻辑编译出的机器码，分发给客户时**不需要安装 Python**。
@@ -129,10 +100,14 @@ python -m nuitka `
   --assume-yes-for-downloads `
   --plugin-enable=anti-bloat `
   --python-flag=-O `
-  --mingw64 `
   --windows-console-mode=force `
   main.py
 ```
+
+> **Windows 编译器兼容性提示**：
+> - 若使用 **Python 3.13 / 3.14+**：Nuitka 会自动拉取并使用 **Zig** 或系统中的 **MSVC**，**切勿添加 `--mingw64` 参数**（否则会报 MinGW64 不兼容错误）。
+> - 若使用 **Python <= 3.12**：可追加 `--mingw64` 自动下载 MinGW-w64 工具链。
+> - 推荐直接运行 `python build_nuitka.py`，脚本已自动适配当前系统平台和 Python 版本的最佳编译参数。
 
 > **核心参数说明**：
 > - `--standalone`：打包所有依赖动态库。

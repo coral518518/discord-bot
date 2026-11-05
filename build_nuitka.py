@@ -6,7 +6,6 @@ Compiles main.py and its dependencies into a standalone single-file binary.
 
 import os
 import sys
-import shutil
 import platform
 import subprocess
 
@@ -36,16 +35,14 @@ def run_build():
         "--python-flag=-O",
     ]
 
-    # Platform specific flags
+    # Platform specific compiler flags
     if is_windows:
-        cmd.extend([
-            "--mingw64", # Automatically download and use MinGW64 if MSVC is not installed
-            "--windows-console-mode=force"
-        ])
+        cmd.append("--windows-console-mode=force")
+        # Python 3.13+ on Windows does not support MinGW64; Nuitka automatically uses Zig or MSVC
+        if sys.version_info < (3, 13):
+            cmd.append("--mingw64")
     else:
-        cmd.extend([
-            "--lto=yes"
-        ])
+        cmd.append("--lto=yes")
 
     cmd.append("main.py")
 
@@ -73,4 +70,3 @@ def run_build():
 
 if __name__ == "__main__":
     sys.exit(run_build())
-
