@@ -23,10 +23,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy service engines and entrypoint
-COPY python-sb/ ./python-sb/
-COPY python-xa/ ./python-xa/
-COPY entrypoint.sh .
+# Copy modular service source files and entrypoint
+COPY main.py core.py utils.py config.py entrypoint.sh ./
 
 # Ensure entrypoint permissions and LF format
 RUN sed -i 's/\r$//' entrypoint.sh && chmod +x entrypoint.sh

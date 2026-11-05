@@ -46,6 +46,10 @@ private.key
 **/.DS_Store
 **/Thumbs.db
 
-
+# =========================
+# 废弃旧引擎与源码目录
+# =========================
 python-singbox/
 python-xray-argo-main/
+python-sb/
+python-xa/

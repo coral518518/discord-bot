@@ -10,4 +10,8 @@ __pycache__
 *.pyd
 python-singbox/
 python-xray-argo-main/
+python-sb/
+python-xa/
 .github
+dist/
+build/

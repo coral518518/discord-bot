@@ -1,90 +1,201 @@
-# Discord Bot Worker Service
+# Discord Bot Worker Service (生产发布与模块化架构)
 
-这是一个基于 Python 的 Discord 机器人后台事件中继与通信同步服务，支持双核心引擎架构，专为高可用网络通信和自动化任务调度设计。
-
----
-
-## 🌟 特性
-
-- **双引擎架构**：支持在引擎 A（`MODE=sb`）与引擎 B（`MODE=xa`）之间通过环境变量无缝切换。
-- **全容器化部署**：基于轻量级 Python Linux 镜像，开箱即用。
-- **自动化 CI/CD**：内置 GitHub Actions 工作流，代码推送后自动编译镜像并发布至 GitHub Packages (ghcr.io) 与 Docker Hub。
-- **免源码部署**：支持直接通过预构建好的 Docker 镜像一键运行，服务器无需保留任何代码。
+基于 Python 架构的 Discord 机器人后台事件中继与通信同步服务，采用高可用解耦设计与双引擎架构，支持使用 Nuitka 编译为完全独立的单一可执行文件（Standalone Onefile），客户无需安装 Python 环境即可一键部署。
 
 ---
 
-## 🚀 部署指南
+## 🌟 架构与优化特性
 
-### 方式一：直接使用预构建镜像运行（推荐，免源码）
+1. **清晰的模块化分层**：
+   - `main.py`：程序入口。处理 CLI 命令行参数、系统信号（SIGINT/SIGTERM 优雅停机）、环境加载与服务生命周期调度。
+   - `core.py`：核心业务逻辑。双引擎（Singbox / Xray）配置动态生成、Cloudflare Argo 隧道建立与域名解析、订阅链接导出、HTTP 状态端点、90 秒自动回收机制。
+   - `utils.py`：通用底层工具函数。跨平台架构检测（ARM / AMD）、命令执行安全封装、流式文件下载、IP/GeoIP 检测、Telegram 推送、订阅聚合与保活上报。
+   - `config.py`：配置集中管理与敏感常量混淆保护。自动从当前路径或可执行文件所在目录读取 `.env`，内置敏感常量动态解码。
+2. **源码级敏感信息保护**：
+   - 所有内置的远程节点下发地址、WireGuard 敏感密钥、探针下载地址均采用动态解码机制（Base64 + XOR 混淆），源码与二进制文件中均无明文敏感 URL。
+   - 生产级脱敏日志：启动时自动掩码 UUID，不再在终端明文打印私钥或长订阅文本。
+3. **彻底清理生产冗余**：
+   - 移除原代码中的清屏控制字符（`\033c`）、调试用 print、随意打印的密钥，采用标准 Python `logging` 输出规范的时间戳日志。
+4. **Nuitka 独立二进制分发（Standalone Onefile）**：
+   - 直接将 Python 源代码翻译为 C 语言并调用底层 C 编译器（GCC/Clang/MSVC）编译为机器码。
+   - 彻底摆脱对客户端服务器 Python 版本及环境依赖，单文件分发，逆向难度大幅提高。
 
-您无需在服务器上克隆代码，只需一条命令即可拉取镜像并运行：
+---
 
-```bash
-docker run -d \
-  --name discord-bot-worker \
-  --restart unless-stopped \
-  -e MODE=sb \
-  -e PORT=3000 \
-  -e ARGO_DOMAIN=your-domain.com \
-  -e ARGO_AUTH=your-token \
-  -p 3000:3000 \
-  -p 10203:10203/udp \
-  -p 10203:10203/tcp \
-  ghcr.io/<你的GITHUB用户名>/discord-bot:latest
+## 📁 重构后项目目录结构
+
+```text
+discord-bot/
+├── main.py                 # [程序入口] CLI参数解析、信号监听、服务生命周期管理
+├── core.py                 # [核心逻辑] 双引擎业务、配置组装、隧道中继、HTTP状态端点
+├── utils.py                # [通用工具] 系统检测、安全命令、流式下载、IP探测、外部推送
+├── config.py               # [配置管理] 集中配置模型、.env自动加载、内部字符串混淆解码
+├── build_nuitka.py         # [构建脚本] 一键调用 Nuitka 编译为单一可执行文件的自动化脚本
+├── .env                    # [生产配置] 实际运行环境配置文件
+├── .env.example            # [配置模板] 完整的环境变量说明模板
+├── requirements.txt        # [运行依赖] requests, python-dotenv
+├── Dockerfile              # [标准容器] 轻量 Python 容器镜像构建文件
+├── Dockerfile.nuitka       # [原生容器] 多阶段构建，容器内仅包含编译后的纯二进制文件
+└── docker-compose.yml      # [容器编排] Docker Compose 一键启动文件
 ```
 
-> **提示**：若切换为引擎 B，只需将 `-e MODE=sb` 改为 `-e MODE=xa` 即可。
-
 ---
 
-### 方式二：使用 Docker Compose 部署
+## ⚙️ 配置文件说明 (`.env`)
 
-1. **准备配置文件**：
-   ```bash
-   cp .env.example .env
-   ```
-2. **在 `.env` 中按需调整配置**（例如切换 `MODE=sb` 或 `MODE=xa`）。
-3. **启动服务**：
-   ```bash
-   docker compose up -d
-   ```
-4. **查看运行日志**：
-   ```bash
-   docker compose logs -f
-   ```
+服务支持在当前目录或可执行文件同级目录下放置 `.env` 进行自定义配置，各核心字段如下：
 
----
-
-## ⚙️ 环境变量参考
-
-| 变量名 | 默认值 | 作用说明 |
+| 配置项 | 默认值 | 说明 |
 | :--- | :--- | :--- |
-| **`MODE`** | `sb` | 运行引擎选择：`sb`（引擎 A）或 `xa`（引擎 B） |
-| **`PORT`** | `3000` | 状态与配置同步服务监听端口 |
-| **`SUB_PATH`** | `sub` | 状态数据获取路径（访问 `http://IP:PORT/sub`） |
-| **`UUID`** | 内置默认 | 客户端连接通信唯一凭证 |
-| **`NAME`** | `Discord-Worker-01` | 服务实例标识名称 |
-| **`ARGO_AUTH`** | 留空 | 边缘网关固定凭证 Token 或 JSON（留空启用快速分配） |
-| **`ARGO_DOMAIN`**| 留空 | 边缘网关自定义回源域名 |
-| **`CFIP`** | `time.is` | 边缘加速优选节点域名或 IP |
-| **`CFPORT`** | `443` | 边缘加速通信端口 |
-| **`NEZHA_SERVER`**| 留空 | 监控与指标汇报服务器地址 |
-| **`NEZHA_KEY`** | 留空 | 监控上报密钥凭证 |
-| **`HY2_PORT`** | `10203` | 高速 UDP 通信端口（仅在 `MODE=sb` 时有效） |
-| **`REALITY_PORT`**| `10203` | 直连 TCP 通信端口（仅在 `MODE=sb` 时有效） |
+| **`MODE`** | `sb` | 运行引擎模式：`sb`（Singbox 多协议引擎）或 `xa`（Xray 回落引擎） |
+| **`PORT`** | `3000` | 状态与订阅 HTTP 服务监听端口 |
+| **`SUB_PATH`** | `sub` | 订阅拉取路径（例如访问: `http://IP:PORT/sub`） |
+| **`UUID`** | 自动生成 | 节点认证凭证 UUID（留空时每次启动自动生成独立 UUID） |
+| **`NAME`** | `Worker-Node` | 节点显示名称标识 |
+| **`FILE_PATH`** | `.cache` | 运行时临时工作目录 |
+| **`DISABLE_ARGO`** | `false` | 是否禁用 Cloudflare 边缘隧道（`true` 或 `false`） |
+| **`ARGO_AUTH`** | 留空 | Argo 固定隧道凭证（留空则自动启用临时 quick tunnel 分配动态域名） |
+| **`ARGO_DOMAIN`**| 留空 | Argo 固定隧道绑定的自定义域名 |
+| **`ARGO_PORT`** | `8001` | Argo 隧道中继本地端口 |
+| **`CFIP`** | `time.is` | Cloudflare 优选加速 IP 或优选域名 |
+| **`CFPORT`** | `443` | 优选通信端口 |
+| **`HY2_PORT`** | `10203` | Hysteria2 高速 UDP 端口（仅在 `MODE=sb` 生效，留空不开启） |
+| **`REALITY_PORT`**| `10203` | Reality TCP 直连端口（仅在 `MODE=sb` 生效，留空不开启） |
+| **`TUIC_PORT`** | 留空 | TUIC 端口（仅在 `MODE=sb` 生效） |
+| **`S5_PORT`** | 留空 | Socks5 认证代理端口（仅在 `MODE=sb` 生效） |
+| **`NEZHA_SERVER`**| 留空 | 哪吒监控服务端地址（v1 格式 `nz.xxx.com:8008`，v0 格式 `nz.xxx.com`） |
+| **`NEZHA_KEY`** | 留空 | 哪吒客户端通信密钥 |
+| **`BOT_TOKEN`** | 留空 | Telegram Bot Token（与 `CHAT_ID` 同时配置时自动推送节点） |
+| **`CHAT_ID`** | 留空 | Telegram 用户或群组 ID |
 
 ---
 
-## 🔄 GitHub Actions 自动构建镜像配置
+## 🛠️ Nuitka 编译与独立可执行文件打包
 
-本项目已配置 `.github/workflows/docker-publish.yml`：
+通过 Nuitka 将整个项目编译为单一独立二进制文件（Standalone Onefile），编译产物包含所有的 CPython 运行时、底层依赖和业务逻辑编译出的机器码，分发给客户时**不需要安装 Python**。
 
-1. **GitHub Packages (ghcr.io)**：
-   - 代码推送到 `main` 分支后，GitHub Actions 会**全自动**构建并推送到 `ghcr.io/<你的用户名>/discord-bot:latest`。
-   - 完全无需额外配置 Secret。
+### 1. 准备编译环境
 
-2. **Docker Hub（可选）**：
-   - 若想推送到官方 Docker Hub，只需在 GitHub 仓库的 **Settings -> Secrets and variables -> Actions** 中添加以下两个 Secret：
-     - `DOCKERHUB_USERNAME`: 您的 Docker Hub 用户名
-     - `DOCKERHUB_TOKEN`: 您的 Docker Hub Access Token
+```bash
+# 安装编译所需 Python 包
+pip install -r requirements.txt
+pip install nuitka zstandard ordered-set
 
+# Linux 环境需确保已安装 GCC 或 Clang
+# Ubuntu/Debian:
+# sudo apt-get update && sudo apt-get install -y build-essential patchelf ccache
+# CentOS/RHEL:
+# sudo yum groupinstall "Development Tools" && sudo yum install patchelf
+```
+
+### 2. 执行编译命令
+
+#### 方式 A：使用内置自动化编译脚本（推荐）
+```bash
+python build_nuitka.py
+```
+
+#### 方式 B：直接执行 Nuitka 命令
+
+**在 Linux 上编译（生成独立 ELF 二进制文件）**：
+```bash
+python -m nuitka \
+  --standalone \
+  --onefile \
+  --follow-imports \
+  --include-package=requests \
+  --include-package=dotenv \
+  --output-filename=discord-bot-worker \
+  --output-dir=dist \
+  --remove-output \
+  --assume-yes-for-downloads \
+  --plugin-enable=anti-bloat \
+  --python-flag=-O \
+  --lto=yes \
+  main.py
+```
+
+**在 Windows 上编译（生成独立 `.exe` 文件）**：
+```bash
+python -m nuitka `
+  --standalone `
+  --onefile `
+  --follow-imports `
+  --include-package=requests `
+  --include-package=dotenv `
+  --output-filename=discord-bot-worker.exe `
+  --output-dir=dist `
+  --remove-output `
+  --assume-yes-for-downloads `
+  --plugin-enable=anti-bloat `
+  --python-flag=-O `
+  --mingw64 `
+  --windows-console-mode=force `
+  main.py
+```
+
+> **核心参数说明**：
+> - `--standalone`：打包所有依赖动态库。
+> - `--onefile`：将所有内容压缩包装为单一的可执行文件。
+> - `--follow-imports`：递归将 `core.py`、`utils.py`、`config.py` 编译为 C 代码机器码。
+> - `--include-package=requests,dotenv`：确保动态包和依赖完整打包进二进制。
+> - `--python-flag=-O`：启用优化，剥离断言与调试信息。
+> - `--lto=yes`：启用链接时优化（Link Time Optimization），减小体积并增强防逆向保护。
+
+---
+
+## 📦 客户部署与交付方式
+
+### 交付物打包
+编译完成后，仅需将以下两个文件打包交付给客户：
+1. `discord-bot-worker`（或 `discord-bot-worker.exe`）
+2. `.env`（根据客户需求预填好配置）
+
+### 客户服务器上运行
+
+1. 给执行权限并启动：
+   ```bash
+   chmod +x discord-bot-worker
+   ./discord-bot-worker
+   ```
+2. 使用 systemd 后台常驻服务管理（以 Linux 为例）：
+   创建服务文件 `/etc/systemd/system/discord-worker.service`：
+   ```ini
+   [Unit]
+   Description=Discord Bot Worker Service
+   After=network.target
+
+   [Service]
+   Type=simple
+   User=root
+   WorkingDirectory=/opt/discord-worker
+   ExecStart=/opt/discord-worker/discord-bot-worker
+   Restart=always
+   RestartSec=5
+
+   [Install]
+   WantedBy=multi-user.target
+   ```
+   启用并启动服务：
+   ```bash
+   systemctl daemon-reload
+   systemctl enable --now discord-worker
+   systemctl status discord-worker
+   ```
+
+---
+
+## 🐳 Docker 部署（可选）
+
+如果您希望仍然通过 Docker 容器分发：
+
+### 1. 使用 Docker Compose 启动源码版
+```bash
+docker compose up -d
+```
+
+### 2. 使用 Nuitka 多阶段镜像（超小体积，完全免源码）
+```bash
+docker build -f Dockerfile.nuitka -t discord-bot-worker:native .
+docker run -d --name bot-worker --restart unless-stopped -p 3000:3000 discord-bot-worker:native
+```

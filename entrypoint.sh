@@ -6,7 +6,6 @@ if [ "$#" -gt 0 ] && [ "$1" != "run" ]; then
     exec "$@"
 fi
 
-# Normalize MODE (case-insensitive, fallback to ENGINE or sb)
 TARGET_MODE=$(echo "${MODE:-${ENGINE:-sb}}" | tr '[:upper:]' '[:lower:]')
 
 echo "========================================================"
@@ -14,20 +13,14 @@ echo " >> Discord Bot Worker Service Initializing..."
 echo " >> Target Profile: ${TARGET_MODE}"
 echo "========================================================"
 
-case "${TARGET_MODE}" in
-    sb|singbox|1|alpha|worker-a)
-        echo ">> Starting Core Engine Profile A (python-sb)..."
-        cd /app/python-sb
-        exec python -u main.py
-        ;;
-    xa|xray|2|beta|worker-b)
-        echo ">> Starting Core Engine Profile B (python-xa)..."
-        cd /app/python-xa
-        exec python -u main.py
-        ;;
-    *)
-        echo ">> [ERROR] Unknown Profile MODE: '${TARGET_MODE}'"
-        echo ">> Valid options are: 'sb' (default, Profile A) or 'xa' (Profile B)"
-        exit 1
-        ;;
-esac
+cd /app
+
+# 1. If compiled Nuitka standalone binary exists, run binary directly (ultra-fast, zero Python overhead)
+if [ -f "/app/discord-bot-worker" ]; then
+    echo ">> Running compiled native binary: /app/discord-bot-worker"
+    exec /app/discord-bot-worker
+fi
+
+# 2. Otherwise run with Python
+echo ">> Running modular Python service (main.py)..."
+exec python -u main.py

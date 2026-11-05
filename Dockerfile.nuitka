@@ -1,0 +1,67 @@
+# ==============================================================================
+# Multi-Stage Nuitka Dockerfile for Discord Bot Worker
+# Compiles Python to a C-native standalone ELF executable
+# ==============================================================================
+
+# Stage 1: Build & Compile with Nuitka
+FROM python:3.11-slim AS builder
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    gcc \
+    ca-certificates \
+    ccache \
+    patchelf \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt nuitka zstandard ordered-set
+
+COPY main.py core.py utils.py config.py ./
+
+RUN python -m nuitka \
+    --standalone \
+    --onefile \
+    --follow-imports \
+    --include-package=requests \
+    --include-package=dotenv \
+    --output-filename=discord-bot-worker \
+    --output-dir=dist \
+    --remove-output \
+    --assume-yes-for-downloads \
+    --plugin-enable=anti-bloat \
+    --lto=yes \
+    main.py
+
+# Stage 2: Ultra-clean deployment runtime (No Python environment needed)
+FROM debian:bookworm-slim
+
+LABEL maintainer="Discord Bot Team"
+LABEL description="Discord Bot Native Compiled Worker"
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    TZ=Asia/Shanghai
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    openssl \
+    ca-certificates \
+    procps \
+    tzdata \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /build/dist/discord-bot-worker /app/discord-bot-worker
+COPY entrypoint.sh .
+
+RUN sed -i 's/\r$//' entrypoint.sh && chmod +x entrypoint.sh /app/discord-bot-worker
+
+EXPOSE 3000 8001 10203
+
+ENTRYPOINT ["/app/entrypoint.sh"]
+
