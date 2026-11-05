@@ -1,0 +1,13 @@
+.git
+.gitignore
+.env
+.cache
+**/.cache
+*.log
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+python-singbox/
+python-xray-argo-main/
+.github

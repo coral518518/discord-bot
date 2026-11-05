@@ -1,0 +1,43 @@
+services:
+  bot-worker:
+    # 方式一：本地通过 Dockerfile 构建运行（当前默认）
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: discord-bot-worker:latest
+    container_name: discord-bot-worker
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # MODE 可选: sb (默认引擎 A) 或 xa (引擎 B)
+      - MODE=${MODE:-sb}
+    ports:
+      # HTTP 状态与配置服务端口
+      - "${PORT:-3000}:${PORT:-3000}"
+      # 扩展 UDP 传输通道 (仅 MODE=sb 时使用)
+      - "${HY2_PORT:-10203}:${HY2_PORT:-10203}/udp"
+      # 扩展 TCP 直连通道 (仅 MODE=sb 时使用)
+      - "${REALITY_PORT:-10203}:${REALITY_PORT:-10203}/tcp"
+    # 若在 Linux VPS 上想要免端口映射且获得更高网络吞吐，可解开下行注释使用 host 模式：
+    # network_mode: "host"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ----------------------------------------------------------------------------
+  # 方式二：直接拉取 GitHub Actions 自动构建好的镜像部署（免源码部署推荐）
+  # 使用时：将上面服务注释，启用下方的配置，并替换成您的镜像地址即可：
+  # ----------------------------------------------------------------------------
+  # bot-remote:
+  #   image: ghcr.io/<你的GITHUB用户名>/discord-bot:latest
+  #   container_name: discord-bot-worker
+  #   restart: unless-stopped
+  #   env_file:
+  #     - .env
+  #   ports:
+  #     - "${PORT:-3000}:${PORT:-3000}"
+  #     - "${HY2_PORT:-10203}:${HY2_PORT:-10203}/udp"
+  #     - "${REALITY_PORT:-10203}:${REALITY_PORT:-10203}/tcp"
