@@ -19,6 +19,13 @@ services:
       - "${HY2_PORT:-10203}:${HY2_PORT:-10203}/udp"
       # 扩展 TCP 直连通道 (仅 MODE=sb 时使用)
       - "${REALITY_PORT:-10203}:${REALITY_PORT:-10203}/tcp"
+    # 给容器预留 60 秒冷启动缓冲时间，防止 Kubernetes / Cloady 就绪探针过早报错
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://127.0.0.1:${PORT:-3000}/ || exit 0"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
     # 若在 Linux VPS 上想要免端口映射且获得更高网络吞吐，可解开下行注释使用 host 模式：
     # network_mode: "host"
     logging:
