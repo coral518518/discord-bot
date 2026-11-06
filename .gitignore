@@ -49,7 +49,7 @@ private.key
 # =========================
 # 废弃旧引擎与源码目录
 # =========================
-python-singbox/
-python-xray-argo-main/
+python-sing/
+python-arg/
 python-sb/
 python-xa/
