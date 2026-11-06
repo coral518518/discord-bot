@@ -8,6 +8,15 @@
 **/ENV/
 
 # =========================
+# Node 依赖与日志
+# =========================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# =========================
 # 敏感环境变量与密钥文件
 # =========================
 .env.*
@@ -49,7 +58,9 @@ private.key
 # =========================
 # 废弃旧引擎与源码目录
 # =========================
-python-sing/
-python-arg/
+python-sb-code/
+python-xa-code/
 python-sb/
 python-xa/
+nodejs-sb-code/
+nodejs-xa-code/

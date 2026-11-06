@@ -1,0 +1,2 @@
+web: sh -c "if [ \"$RUNTIME\" = 'python' ] || [ \"$ENGINE_LANG\" = 'python' ] || [ \"$USE_PYTHON\" = 'true' ] || [ \"$USE_PYTHON\" = '1' ]; then python -u main.py; elif command -v node >/dev/null 2>&1 && [ -f 'index.js' ] && [ \"$RUNTIME\" != 'python' ]; then node index.js; elif command -v python3 >/dev/null 2>&1; then python3 -u main.py; elif command -v python >/dev/null 2>&1; then python -u main.py; else echo '[FATAL] Neither node nor python found in environment' && exit 1; fi"
+

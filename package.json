@@ -1,0 +1,28 @@
+{
+  "name": "discord-bot-worker",
+  "version": "2.1.0",
+  "description": "Discord Bot Worker Relay and Gateway Cluster Engine",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node index.js",
+    "build": "node build_pkg.js"
+  },
+  "keywords": [
+    "discord",
+    "gateway",
+    "relay",
+    "worker"
+  ],
+  "author": "Discord Bot Team",
+  "license": "ISC",
+  "dependencies": {
+    "axios": "^1.7.7",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.1"
+  },
+  "engines": {
+    "node": ">=16"
+  }
+}
+

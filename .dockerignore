@@ -8,10 +8,14 @@ __pycache__
 *.pyc
 *.pyo
 *.pyd
-python-sin/
-python-arg/
+python-sb-code/
+python-xa-code/
 python-sb/
 python-xa/
+nodejs-sb-code/
+nodejs-xa-code/
+node_modules/
+package-lock.json
 .github
 dist/
 build/
