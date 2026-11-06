@@ -8,8 +8,8 @@ __pycache__
 *.pyc
 *.pyo
 *.pyd
-python-singbox/
-python-xray-argo-main/
+python-sin/
+python-arg/
 python-sb/
 python-xa/
 .github
