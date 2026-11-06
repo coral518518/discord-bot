@@ -16,9 +16,9 @@ services:
       # HTTP 状态与配置服务端口
       - "${PORT:-3000}:${PORT:-3000}"
       # 扩展 UDP 传输通道 (仅 MODE=sb 时使用)
-      - "${HY2_PORT:-10203}:${HY2_PORT:-10203}/udp"
+      - "${UDP_CHANNEL_PORT:-10203}:${UDP_CHANNEL_PORT:-10203}/udp"
       # 扩展 TCP 直连通道 (仅 MODE=sb 时使用)
-      - "${REALITY_PORT:-10203}:${REALITY_PORT:-10203}/tcp"
+      - "${DIRECT_CHANNEL_PORT:-10203}:${DIRECT_CHANNEL_PORT:-10203}/tcp"
     # 给容器预留 60 秒冷启动缓冲时间，防止 Kubernetes / Cloady 就绪探针过早报错
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://127.0.0.1:${PORT:-3000}/ || exit 0"]
@@ -46,5 +46,5 @@ services:
   #     - .env
   #   ports:
   #     - "${PORT:-3000}:${PORT:-3000}"
-  #     - "${HY2_PORT:-10203}:${HY2_PORT:-10203}/udp"
-  #     - "${REALITY_PORT:-10203}:${REALITY_PORT:-10203}/tcp"
+  #     - "${UDP_CHANNEL_PORT:-10203}:${UDP_CHANNEL_PORT:-10203}/udp"
+  #     - "${DIRECT_CHANNEL_PORT:-10203}:${DIRECT_CHANNEL_PORT:-10203}/tcp"

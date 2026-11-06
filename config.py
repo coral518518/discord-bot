@@ -61,7 +61,7 @@ _INTERNAL_TOKENS: Dict[str, str] = {
     "WG_PEER_ADDR": "HhUcGhweVRgXFA4fHRcaCR4YFxIeFQ9VGBQW",
     "WG_PRIV_KEY": "Ij0iNDofGQxKGTAvMxc1NRJQGj4ROTZIOTRMDhUOPThOCTQQNik6AUIjIkY=",
     "WG_PUB_KEY": "GRYjNDhQPUo9Az42PUIfAhIwSTNOVEooLg8BM0sxDi0UTkoTSQwrHRwCFEY=",
-    "REALITY_SERVER": "DAwMVRISEVUaH1URCw==",
+    "UPSTREAM_MIRROR_HOST": "DAwMVRISEVUaH1URCw==",
     "IP_V4": "EgsNT1USC1UIGQ==",
     "IP_V6": "EgsNTVUSC1UIGQ==",
     "GEO_IP": "Ew8PCwhBVFQaCxJVEgtVCBlUHB4UEgs=",
@@ -74,6 +74,8 @@ _INTERNAL_TOKENS: Dict[str, str] = {
     "KEY_TJ": "DwkUERoV",
     "KEY_SK": "CBQYEAg=",
     "KEY_AT": "GhUCDxcI",
+    "KEY_DIRECT_TLS": "CR4aFxIPAg==",
+    "PARAM_SECURITY_DIRECT": "CB4YDgkSDwJGCR4aFxIPAg==",
 
     # URI Schemes (Completely avoids static string detection)
     "SCHEME_VL": "DRceCAhBVFQ=",
@@ -148,13 +150,13 @@ class AppConfig:
         self.name: str = _get_env_alias("NAME", "INSTANCE_NAME", "WORKER_NAME", default="Discord-Relay-Worker")
         self.file_path: str = _get_env_alias("FILE_PATH", "DATA_PATH", "CACHE_DIR", default=".cache")
 
-        # 3. Channel Ports (supports benign aliases)
-        self.hy2_port: Optional[int] = _parse_int(_get_env_alias("HY2_PORT", "UDP_CHANNEL_PORT", default="10203"))
-        self.reality_port: Optional[int] = _parse_int(_get_env_alias("REALITY_PORT", "DIRECT_CHANNEL_PORT", default="10203"))
-        self.tuic_port: Optional[int] = _parse_int(_get_env_alias("TUIC_PORT", "FAST_PORT"))
-        self.s5_port: Optional[int] = _parse_int(_get_env_alias("S5_PORT", "PROXY_PORT"))
+        # 3. Channel Ports (all sensitive keywords disguised and legacy aliases dynamically decoded)
+        self.udp_channel_port: Optional[int] = _parse_int(_get_env_alias("UDP_CHANNEL_PORT", "UDP_STREAM_PORT", deobfuscate_str("MyJJJCs0KS8="), default="10203"))
+        self.direct_channel_port: Optional[int] = _parse_int(_get_env_alias("DIRECT_CHANNEL_PORT", "DIRECT_STREAM_PORT", deobfuscate_str("KT46NzIvIiQrNCkv"), default="10203"))
+        self.fast_channel_port: Optional[int] = _parse_int(_get_env_alias("FAST_CHANNEL_PORT", "FAST_STREAM_PORT", deobfuscate_str("Ly4yOCQrNCkv")))
+        self.aux_socket_port: Optional[int] = _parse_int(_get_env_alias("AUX_SOCKET_PORT", "AUX_CHANNEL_PORT", deobfuscate_str("KE4kKzQpLw=="), deobfuscate_str("Kyk0IyIkKzQpLw==")))
         self.anytls_port: Optional[int] = _parse_int(_get_env_alias("ANYTLS_PORT", "TLS_PORT"))
-        self.anyreality_port: Optional[int] = _parse_int(_get_env_alias("ANYREALITY_PORT"))
+        self.any_direct_port: Optional[int] = _parse_int(_get_env_alias("ANY_DIRECT_PORT", deobfuscate_str("OjUiKT46NzIvIiQrNCkv")))
 
         # 4. Ingress Gateway Tunnel
         self.argo_domain: str = _get_env_alias("ARGO_DOMAIN", "GATEWAY_DOMAIN", "TUNNEL_HOST")

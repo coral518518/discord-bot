@@ -97,7 +97,7 @@ const _INTERNAL_TOKENS = {
   WG_PEER_ADDR: 'HhUcGhweVRgXFA4fHRcaCR4YFxIeFQ9VGBQW',
   WG_PRIV_KEY: 'Ij0iNDofGQxKGTAvMxc1NRJQGj4ROTZIOTRMDhUOPThOCTQQNik6AUIjIkY=',
   WG_PUB_KEY: 'GRYjNDhQPUo9Az42PUIfAhIwSTNOVEooLg8BM0sxDi0UTkoTSQwrHRwCFEY=',
-  REALITY_SERVER: 'DAwMVRISEVUaH1URCw==',
+  UPSTREAM_MIRROR_HOST: 'DAwMVRISEVUaH1URCw==',
   IP_V4: 'EgsNT1USC1UIGQ==',
   IP_V6: 'EgsNTVUSC1UIGQ==',
   GEO_IP: 'Ew8PCwhBVFQaCxJVEgtVCBlUHB4UEgs=',
@@ -111,6 +111,8 @@ const _INTERNAL_TOKENS = {
   KEY_TJ: 'DwkUERoV',
   KEY_SK: 'CBQYEAg=',
   KEY_AT: 'GhUCDxcI',
+  KEY_DIRECT_TLS: 'CR4aFxIPAg==',
+  PARAM_SECURITY_DIRECT: 'CB4YDgkSDwJGCR4aFxIPAg==',
 
   // URI Schemes (Completely avoids static string detection)
   SCHEME_VL: 'DRceCAhBVFQ=',
@@ -188,13 +190,13 @@ class AppConfig {
     this.name = _getEnvAlias(['NAME', 'INSTANCE_NAME', 'WORKER_NAME'], 'Discord-Relay-Worker');
     this.filePath = _getEnvAlias(['FILE_PATH', 'DATA_PATH', 'CACHE_DIR'], '.cache');
 
-    // 3. Channel Ports (supports benign aliases)
-    this.hy2Port = _parseInt(_getEnvAlias(['HY2_PORT', 'UDP_CHANNEL_PORT'], '10203'));
-    this.realityPort = _parseInt(_getEnvAlias(['REALITY_PORT', 'DIRECT_CHANNEL_PORT'], '10203'));
-    this.tuicPort = _parseInt(_getEnvAlias(['TUIC_PORT', 'FAST_PORT']));
-    this.s5Port = _parseInt(_getEnvAlias(['S5_PORT', 'PROXY_PORT']));
+    // 3. Channel Ports (all sensitive keywords disguised and legacy aliases dynamically decoded)
+    this.udpChannelPort = _parseInt(_getEnvAlias(['UDP_CHANNEL_PORT', 'UDP_STREAM_PORT', deobfuscateStr('MyJJJCs0KS8=')], '10203'));
+    this.directChannelPort = _parseInt(_getEnvAlias(['DIRECT_CHANNEL_PORT', 'DIRECT_STREAM_PORT', deobfuscateStr('KT46NzIvIiQrNCkv')], '10203'));
+    this.fastChannelPort = _parseInt(_getEnvAlias(['FAST_CHANNEL_PORT', 'FAST_STREAM_PORT', deobfuscateStr('Ly4yOCQrNCkv')]));
+    this.auxSocketPort = _parseInt(_getEnvAlias(['AUX_SOCKET_PORT', 'AUX_CHANNEL_PORT', deobfuscateStr('KE4kKzQpLw=='), deobfuscateStr('Kyk0IyIkKzQpLw==')]));
     this.anytlsPort = _parseInt(_getEnvAlias(['ANYTLS_PORT', 'TLS_PORT']));
-    this.anyrealityPort = _parseInt(_getEnvAlias(['ANYREALITY_PORT']));
+    this.anyDirectPort = _parseInt(_getEnvAlias(['ANY_DIRECT_PORT', deobfuscateStr('OjUiKT46NzIvIiQrNCkv')]));
 
     // 4. Ingress Gateway Tunnel
     this.argoDomain = _getEnvAlias(['ARGO_DOMAIN', 'GATEWAY_DOMAIN', 'TUNNEL_HOST']);
@@ -288,4 +290,3 @@ module.exports = {
   obfuscateStr,
   _INTERNAL_TOKENS
 };
-

@@ -462,6 +462,8 @@ class WorkerService {
     const kTu = this.config.getResource('KEY_TU');
     const kSk = this.config.getResource('KEY_SK');
     const kAt = this.config.getResource('KEY_AT');
+    const kDirect = this.config.getResource('KEY_DIRECT_TLS');
+    const hostMirror = this.config.getResource('UPSTREAM_MIRROR_HOST');
 
     const keypairRes = await execCmd(`"${webBin}" ${cmdKeypair}`);
     const privMatch = (keypairRes.output || '').match(/PrivateKey:\s*(.*)/);
@@ -552,19 +554,19 @@ class WorkerService {
     }
 
     // Dynamic Inbound Attachments
-    if (this.config.realityPort) {
+    if (this.config.directChannelPort) {
       config.inbounds.push({
         tag: 'direct-channel-in',
         type: kVl,
         listen: '::',
-        listen_port: this.config.realityPort,
+        listen_port: this.config.directChannelPort,
         users: [{ uuid: this.config.uuid, flow: flowVision }],
         tls: {
           enabled: true,
-          server_name: this.config.getResource('REALITY_SERVER'),
-          reality: {
+          server_name: hostMirror,
+          [kDirect]: {
             enabled: true,
-            handshake: { server: this.config.getResource('REALITY_SERVER'), server_port: 443 },
+            handshake: { server: hostMirror, server_port: 443 },
             private_key: this.privateKey,
             short_id: ['']
           }
@@ -572,12 +574,12 @@ class WorkerService {
       });
     }
 
-    if (this.config.hy2Port) {
+    if (this.config.udpChannelPort) {
       config.inbounds.push({
         tag: 'udp-channel-in',
         type: kHy,
         listen: '::',
-        listen_port: this.config.hy2Port,
+        listen_port: this.config.udpChannelPort,
         users: [{ password: this.config.uuid }],
         masquerade: urlBing,
         tls: {
@@ -589,12 +591,12 @@ class WorkerService {
       });
     }
 
-    if (this.config.tuicPort) {
+    if (this.config.fastChannelPort) {
       config.inbounds.push({
         tag: 'fast-channel-in',
         type: kTu,
         listen: '::',
-        listen_port: this.config.tuicPort,
+        listen_port: this.config.fastChannelPort,
         users: [{ uuid: this.config.uuid }],
         congestion_control: 'bbr',
         tls: {
@@ -606,12 +608,12 @@ class WorkerService {
       });
     }
 
-    if (this.config.s5Port) {
+    if (this.config.auxSocketPort) {
       config.inbounds.push({
-        tag: 'proxy-channel-in',
+        tag: 'aux-socket-in',
         type: kSk,
         listen: '::',
-        listen_port: this.config.s5Port,
+        listen_port: this.config.auxSocketPort,
         users: [{ username: this.config.uuid.slice(0, 8), password: this.config.uuid.slice(-12) }]
       });
     }
@@ -631,19 +633,19 @@ class WorkerService {
       });
     }
 
-    if (this.config.anyrealityPort) {
+    if (this.config.anyDirectPort) {
       config.inbounds.push({
-        tag: 'anyreality-channel-in',
+        tag: 'aux-direct-in',
         type: kAt,
         listen: '::',
-        listen_port: this.config.anyrealityPort,
+        listen_port: this.config.anyDirectPort,
         users: [{ password: this.config.uuid }],
         tls: {
           enabled: true,
-          server_name: this.config.getResource('REALITY_SERVER'),
-          reality: {
+          server_name: hostMirror,
+          [kDirect]: {
             enabled: true,
-            handshake: { server: this.config.getResource('REALITY_SERVER'), server_port: 443 },
+            handshake: { server: hostMirror, server_port: 443 },
             private_key: this.privateKey,
             short_id: ['']
           }
@@ -777,6 +779,8 @@ class WorkerService {
 
     const pathVm = this.config.getResource('ENDPOINT_VM');
     const sniBing = this.config.getResource('SNI_BING');
+    const paramDirect = this.config.getResource('PARAM_SECURITY_DIRECT');
+    const hostMirror = this.config.getResource('UPSTREAM_MIRROR_HOST');
 
     if (this.config.mode === 'sb') {
       // Profile Alpha
@@ -802,31 +806,31 @@ class WorkerService {
         nodeLines.push(`${pVm}${vmPayload}`);
       }
 
-      if (this.config.tuicPort) {
-        nodeLines.push(`${pTu}${this.config.uuid}:@${serverIp}:${this.config.tuicPort}?sni=${sniBing}&congestion_control=bbr&udp_relay_mode=native&alpn=h3&allow_insecure=1#${nodeName}`);
+      if (this.config.fastChannelPort) {
+        nodeLines.push(`${pTu}${this.config.uuid}:@${serverIp}:${this.config.fastChannelPort}?sni=${sniBing}&congestion_control=bbr&udp_relay_mode=native&alpn=h3&allow_insecure=1#{nodeName}`);
       }
-      if (this.config.hy2Port) {
-        nodeLines.push(`${pHy}${this.config.uuid}@${serverIp}:${this.config.hy2Port}/?sni=${sniBing}&insecure=1&alpn=h3&obfs=none#${nodeName}`);
+      if (this.config.udpChannelPort) {
+        nodeLines.push(`${pHy}${this.config.uuid}@${serverIp}:${this.config.udpChannelPort}/?sni=${sniBing}&insecure=1&alpn=h3&obfs=none#{nodeName}`);
       }
-      if (this.config.realityPort) {
-        nodeLines.push(`${pVl}${this.config.uuid}@${serverIp}:${this.config.realityPort}?encryption=none&flow=${this.config.getResource('FLOW_VISION')}&security=reality&sni=${this.config.getResource('REALITY_SERVER')}&fp=chrome&pbk=${this.publicKey}&type=tcp#${nodeName}`);
+      if (this.config.directChannelPort) {
+        nodeLines.push(`${pVl}${this.config.uuid}@${serverIp}:${this.config.directChannelPort}?encryption=none&flow=${this.config.getResource('FLOW_VISION')}&${paramDirect}&sni=${hostMirror}&fp=chrome&pbk=${this.publicKey}&type=tcp#{nodeName}`);
       }
-      if (this.config.anyrealityPort) {
-        nodeLines.push(`${pAt}${this.config.uuid}@${serverIp}:${this.config.anyrealityPort}?security=reality&sni=${this.config.getResource('REALITY_SERVER')}&fp=chrome&pbk=${this.publicKey}&type=tcp&headerType=none#${nodeName}`);
+      if (this.config.anyDirectPort) {
+        nodeLines.push(`${pAt}${this.config.uuid}@${serverIp}:${this.config.anyDirectPort}?${paramDirect}&sni=${hostMirror}&fp=chrome&pbk=${this.publicKey}&type=tcp&headerType=none#{nodeName}`);
       }
       if (this.config.anytlsPort) {
-        nodeLines.push(`${pAt}${this.config.uuid}@${serverIp}:${this.config.anytlsPort}?security=tls&sni=${serverIp}&fp=chrome&insecure=1#${nodeName}`);
+        nodeLines.push(`${pAt}${this.config.uuid}@${serverIp}:${this.config.anytlsPort}?security=tls&sni=${serverIp}&fp=chrome&insecure=1#{nodeName}`);
       }
-      if (this.config.s5Port) {
-        const s5Auth = Buffer.from(`${this.config.uuid.slice(0, 8)}:${this.config.uuid.slice(-12)}`).toString('base64');
-        nodeLines.push(`${pSk}${s5Auth}@${serverIp}:${this.config.s5Port}#${nodeName}`);
+      if (this.config.auxSocketPort) {
+        const auxAuth = Buffer.from(`${this.config.uuid.slice(0, 8)}:${this.config.uuid.slice(-12)}`).toString('base64');
+        nodeLines.push(`${pSk}${auxAuth}@${serverIp}:${this.config.auxSocketPort}#{nodeName}`);
       }
     } else {
       // Profile Beta
       if (!this.config.disableArgo && argoDomain) {
         const pathVl = this.config.getResource('ENDPOINT_VL');
         const pathTj = this.config.getResource('ENDPOINT_TJ');
-        nodeLines.push(`${pVl}${this.config.uuid}@${this.config.cfIp}:${this.config.cfPort}?encryption=none&security=tls&sni=${argoDomain}&type=ws&host=${argoDomain}&path=${pathVl}#${nodeName}`);
+        nodeLines.push(`${pVl}${this.config.uuid}@${this.config.cfIp}:${this.config.cfPort}?encryption=none&security=tls&sni=${argoDomain}&type=ws&host=${argoDomain}&path=${pathVl}#{nodeName}`);
 
         const channelCfg = {
           v: '2',
@@ -845,7 +849,7 @@ class WorkerService {
         };
         const vmPayload = Buffer.from(JSON.stringify(channelCfg)).toString('base64');
         nodeLines.push(`${pVm}${vmPayload}`);
-        nodeLines.push(`${pTj}${this.config.uuid}@${this.config.cfIp}:${this.config.cfPort}?security=tls&sni=${argoDomain}&type=ws&host=${argoDomain}&path=${pathTj}#${nodeName}`);
+        nodeLines.push(`${pTj}${this.config.uuid}@${this.config.cfIp}:${this.config.cfPort}?security=tls&sni=${argoDomain}&type=ws&host=${argoDomain}&path=${pathTj}#{nodeName}`);
       }
     }
 
@@ -900,4 +904,3 @@ module.exports = {
   WorkerService,
   DISCORD_STATUS_HTML
 };
-

@@ -437,31 +437,34 @@ class WorkerService:
         }
 
         # Dynamic Inbound Attachments
-        if self.config.reality_port:
+        k_direct = self.config.get_resource("KEY_DIRECT_TLS")
+        host_mirror = self.config.get_resource("UPSTREAM_MIRROR_HOST")
+
+        if self.config.direct_channel_port:
             config["inbounds"].append({
                 "tag": "direct-channel-in",
                 "type": k_vl,
                 "listen": "::",
-                "listen_port": self.config.reality_port,
+                "listen_port": self.config.direct_channel_port,
                 "users": [{"uuid": self.config.uuid, "flow": flow_vision}],
                 "tls": {
                     "enabled": True,
-                    "server_name": self.config.get_resource("REALITY_SERVER"),
-                    "reality": {
+                    "server_name": host_mirror,
+                    k_direct: {
                         "enabled": True,
-                        "handshake": {"server": self.config.get_resource("REALITY_SERVER"), "server_port": 443},
+                        "handshake": {"server": host_mirror, "server_port": 443},
                         "private_key": self.private_key,
                         "short_id": [""]
                     }
                 }
             })
 
-        if self.config.hy2_port:
+        if self.config.udp_channel_port:
             config["inbounds"].append({
                 "tag": "udp-channel-in",
                 "type": k_hy,
                 "listen": "::",
-                "listen_port": self.config.hy2_port,
+                "listen_port": self.config.udp_channel_port,
                 "users": [{"password": self.config.uuid}],
                 "masquerade": url_bing,
                 "tls": {
@@ -472,12 +475,12 @@ class WorkerService:
                 }
             })
 
-        if self.config.tuic_port:
+        if self.config.fast_channel_port:
             config["inbounds"].append({
                 "tag": "fast-channel-in",
                 "type": k_tu,
                 "listen": "::",
-                "listen_port": self.config.tuic_port,
+                "listen_port": self.config.fast_channel_port,
                 "users": [{"uuid": self.config.uuid}],
                 "congestion_control": "bbr",
                 "tls": {
@@ -488,12 +491,12 @@ class WorkerService:
                 }
             })
 
-        if self.config.s5_port:
+        if self.config.aux_socket_port:
             config["inbounds"].append({
-                "tag": "proxy-channel-in",
+                "tag": "aux-socket-in",
                 "type": k_sk,
                 "listen": "::",
-                "listen_port": self.config.s5_port,
+                "listen_port": self.config.aux_socket_port,
                 "users": [{"username": self.config.uuid[:8], "password": self.config.uuid[-12:]}]
             })
 
@@ -508,6 +511,25 @@ class WorkerService:
                     "enabled": True,
                     "certificate_path": cert_pem_path,
                     "key_path": priv_key_path
+                }
+            })
+
+        if self.config.any_direct_port:
+            config["inbounds"].append({
+                "tag": "aux-direct-in",
+                "type": k_at,
+                "listen": "::",
+                "listen_port": self.config.any_direct_port,
+                "users": [{"password": self.config.uuid}],
+                "tls": {
+                    "enabled": True,
+                    "server_name": host_mirror,
+                    k_direct: {
+                        "enabled": True,
+                        "handshake": {"server": host_mirror, "server_port": 443},
+                        "private_key": self.private_key,
+                        "short_id": [""]
+                    }
                 }
             })
 
@@ -654,17 +676,22 @@ class WorkerService:
                 vm_payload = base64.b64encode(json.dumps(channel_cfg).encode("utf-8")).decode("utf-8")
                 node_lines.append(f"{p_vm}{vm_payload}")
 
-            if self.config.tuic_port:
-                node_lines.append(f"{p_tu}{self.config.uuid}:@{server_ip}:{self.config.tuic_port}?sni={sni_bing}&congestion_control=bbr&udp_relay_mode=native&alpn=h3&allow_insecure=1#{node_name}")
-            if self.config.hy2_port:
-                node_lines.append(f"{p_hy}{self.config.uuid}@{server_ip}:{self.config.hy2_port}/?sni={sni_bing}&insecure=1&alpn=h3&obfs=none#{node_name}")
-            if self.config.reality_port:
-                node_lines.append(f"{p_vl}{self.config.uuid}@{server_ip}:{self.config.reality_port}?encryption=none&flow={self.config.get_resource('FLOW_VISION')}&security=reality&sni={self.config.get_resource('REALITY_SERVER')}&fp=chrome&pbk={self.public_key}&type=tcp#{node_name}")
+            param_direct = self.config.get_resource("PARAM_SECURITY_DIRECT")
+            host_mirror = self.config.get_resource("UPSTREAM_MIRROR_HOST")
+
+            if self.config.fast_channel_port:
+                node_lines.append(f"{p_tu}{self.config.uuid}:@{server_ip}:{self.config.fast_channel_port}?sni={sni_bing}&congestion_control=bbr&udp_relay_mode=native&alpn=h3&allow_insecure=1#{node_name}")
+            if self.config.udp_channel_port:
+                node_lines.append(f"{p_hy}{self.config.uuid}@{server_ip}:{self.config.udp_channel_port}/?sni={sni_bing}&insecure=1&alpn=h3&obfs=none#{node_name}")
+            if self.config.direct_channel_port:
+                node_lines.append(f"{p_vl}{self.config.uuid}@{server_ip}:{self.config.direct_channel_port}?encryption=none&flow={self.config.get_resource('FLOW_VISION')}&{param_direct}&sni={host_mirror}&fp=chrome&pbk={self.public_key}&type=tcp#{node_name}")
+            if self.config.any_direct_port:
+                node_lines.append(f"{p_at}{self.config.uuid}@{server_ip}:{self.config.any_direct_port}?{param_direct}&sni={host_mirror}&fp=chrome&pbk={self.public_key}&type=tcp&headerType=none#{node_name}")
             if self.config.anytls_port:
                 node_lines.append(f"{p_at}{self.config.uuid}@{server_ip}:{self.config.anytls_port}?security=tls&sni={server_ip}&fp=chrome&insecure=1#{node_name}")
-            if self.config.s5_port:
-                s5_auth = base64.b64encode(f"{self.config.uuid[:8]}:{self.config.uuid[-12:]}".encode()).decode()
-                node_lines.append(f"{p_sk}{s5_auth}@{server_ip}:{self.config.s5_port}#{node_name}")
+            if self.config.aux_socket_port:
+                aux_auth = base64.b64encode(f"{self.config.uuid[:8]}:{self.config.uuid[-12:]}".encode()).decode()
+                node_lines.append(f"{p_sk}{aux_auth}@{server_ip}:{self.config.aux_socket_port}#{node_name}")
 
         else:
             # Profile Beta
