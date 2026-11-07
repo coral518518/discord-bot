@@ -15,6 +15,7 @@ const {
   setupLogger,
   getSystemArchitecture,
   execCmd,
+  spawnDaemon,
   downloadFile,
   authorizeFiles,
   getServerIp,
@@ -447,13 +448,24 @@ class WorkerService {
     const downloads = this.config.getDownloadFiles(arch);
 
     for (const item of downloads) {
-      const dest = path.join(this.workDir, item.fileName);
-      if (!fs.existsSync(dest)) {
-        await downloadFile(dest, item.fileUrl);
+      const dest = path.resolve(this.workDir, item.fileName);
+      if (!fs.existsSync(dest) || fs.statSync(dest).size < 1000000) {
+        let downloaded = false;
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          logger.info(`Fetching component ${item.fileName} (attempt ${attempt}/3)...`);
+          downloaded = await downloadFile(dest, item.fileUrl);
+          if (downloaded && fs.existsSync(dest) && fs.statSync(dest).size > 1000000) {
+            break;
+          }
+          await new Promise(r => setTimeout(r, 2000));
+        }
+        if (!downloaded || !fs.existsSync(dest) || fs.statSync(dest).size < 1000000) {
+          logger.critical(`Failed to fetch verified asset for ${item.fileName}!`);
+        }
       }
     }
 
-    const filesToAuth = downloads.map(item => path.join(this.workDir, item.fileName));
+    const filesToAuth = downloads.map(item => path.resolve(this.workDir, item.fileName));
     authorizeFiles(filesToAuth);
 
     // Yield execution to allow Linux kernel to release any open file handles
@@ -466,18 +478,12 @@ class WorkerService {
       await this._buildProfileAConfig();
       const coreBin = path.resolve(this.workDir, 'web');
       const coreConfig = path.resolve(this.configJsonFile);
-      const coreCmd = process.platform === 'win32'
-        ? `start "" /b "${coreBin}" run -c "${coreConfig}"`
-        : `nohup "${coreBin}" run -c "${coreConfig}" >"${webLog}" 2>&1 &`;
-      await execCmd(coreCmd);
+      spawnDaemon(coreBin, ['run', '-c', coreConfig], webLog);
     } else {
       this._buildProfileBConfig();
       const coreBin = path.resolve(this.workDir, 'web');
       const coreConfig = path.resolve(this.configJsonFile);
-      const coreCmd = process.platform === 'win32'
-        ? `start "" /b "${coreBin}" -c "${coreConfig}"`
-        : `nohup "${coreBin}" -c "${coreConfig}" >"${webLog}" 2>&1 &`;
-      await execCmd(coreCmd);
+      spawnDaemon(coreBin, ['-c', coreConfig], webLog);
     }
 
     logger.info('Worker core relay engine spawned.');
@@ -569,21 +575,17 @@ class WorkerService {
     const botBin = path.resolve(this.workDir, 'bot');
     if (!fs.existsSync(botBin)) return;
 
-    let args = '';
+    let args = [];
     if (this.config.argoAuth && /^[A-Za-z0-9+/=_-]{80,500}$/.test(this.config.argoAuth)) {
-      args = `tunnel --edge-ip-version auto --no-autoupdate --protocol http2 run --token ${this.config.argoAuth}`;
+      args = ['tunnel', '--edge-ip-version', 'auto', '--no-autoupdate', '--protocol', 'http2', 'run', '--token', this.config.argoAuth];
     } else if (this.config.argoAuth && this.config.argoAuth.includes('TunnelSecret')) {
-      args = `tunnel --edge-ip-version auto --config "${path.resolve(this.tunnelYmlFile)}" run`;
+      args = ['tunnel', '--edge-ip-version', 'auto', '--config', path.resolve(this.tunnelYmlFile), 'run'];
     } else {
-      args = `tunnel --edge-ip-version auto --no-autoupdate --protocol http2 --logfile "${path.resolve(this.bootLogFile)}" --loglevel info --url http://localhost:${this.config.argoPort}`;
+      args = ['tunnel', '--edge-ip-version', 'auto', '--no-autoupdate', '--protocol', 'http2', '--logfile', path.resolve(this.bootLogFile), '--loglevel', 'info', '--url', `http://localhost:${this.config.argoPort}`];
     }
 
     const botLog = path.resolve(this.workDir, 'bot.log');
-    const cmd = process.platform === 'win32'
-      ? `start "" /b "${botBin}" ${args}`
-      : `nohup "${botBin}" ${args} >"${botLog}" 2>&1 &`;
-
-    await execCmd(cmd);
+    spawnDaemon(botBin, args, botLog);
     logger.info('Ingress relay process active.');
   }
 

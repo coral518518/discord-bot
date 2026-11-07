@@ -3,7 +3,7 @@ const path = require('path');
 const os = require('os');
 const http = require('http');
 const https = require('https');
-const { exec } = require('child_process');
+const { exec, spawn } = require('child_process');
 
 let axios;
 try {
@@ -100,7 +100,7 @@ async function downloadFile(destPath, url) {
         method: 'get',
         url: url,
         responseType: 'stream',
-        timeout: 30000
+        timeout: 300000
       });
 
       await new Promise((resolve, reject) => {
@@ -123,7 +123,7 @@ async function downloadFile(destPath, url) {
       await new Promise((resolve, reject) => {
         const parsedUrl = new URL(url);
         const client = parsedUrl.protocol === 'https:' ? https : http;
-        const req = client.get(url, { timeout: 30000 }, (res) => {
+        const req = client.get(url, { timeout: 300000 }, (res) => {
           if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
             return downloadFile(destPath, res.headers.location).then(resolve).catch(reject);
           }
@@ -385,10 +385,38 @@ async function addVisitTask(keepaliveEndpoint, projectUrl) {
   }
 }
 
+/**
+ * Reliably spawn a detached background daemon process without relying on shell / nohup.
+ */
+function spawnDaemon(binaryPath, args = [], logPath = null) {
+  let stdio = ['ignore', 'ignore', 'ignore'];
+  if (logPath) {
+    try {
+      const fd = fs.openSync(logPath, 'a');
+      stdio = ['ignore', fd, fd];
+    } catch (e) {
+      stdio = ['ignore', 'ignore', 'ignore'];
+    }
+  }
+
+  const child = spawn(binaryPath, args, {
+    detached: true,
+    stdio
+  });
+
+  child.on('error', (err) => {
+    logger.error(`Failed to spawn ${path.basename(binaryPath)}: ${err.message}`);
+  });
+
+  child.unref();
+  return child;
+}
+
 module.exports = {
   setupLogger,
   getSystemArchitecture,
   execCmd,
+  spawnDaemon,
   downloadFile,
   authorizeFiles,
   getServerIp,
