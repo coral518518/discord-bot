@@ -267,17 +267,42 @@ class WorkerService:
 
         self._launch_nezha()
 
+        web_log = os.path.join(self.work_dir, "web.log")
         if self.config.mode == "sb":
             self._build_profile_a_config()
             core_bin = os.path.join(self.work_dir, "web")
-            core_cmd = f"nohup {core_bin} run -c {self.config_json_file} >/dev/null 2>&1 &"
+            core_cmd = f"nohup {core_bin} run -c {self.config_json_file} >{web_log} 2>&1 &"
         else:
             self._build_profile_b_config()
             core_bin = os.path.join(self.work_dir, "web")
-            core_cmd = f"nohup {core_bin} -c {self.config_json_file} >/dev/null 2>&1 &"
+            core_cmd = f"nohup {core_bin} -c {self.config_json_file} >{web_log} 2>&1 &"
 
         exec_cmd(core_cmd)
         logger.info("Worker core relay engine spawned.")
+
+        # Verify core engine is actively listening
+        engine_ready = False
+        import socket
+        for _ in range(5):
+            time.sleep(0.6)
+            try:
+                with socket.create_connection(("127.0.0.1", self.config.argo_port), timeout=1.0):
+                    engine_ready = True
+                    break
+            except (socket.error, OSError):
+                pass
+
+        if engine_ready:
+            logger.info(f"Core relay engine listening and ready on port {self.config.argo_port}.")
+        else:
+            boot_err = ""
+            if os.path.isfile(web_log):
+                try:
+                    with open(web_log, "r", encoding="utf-8", errors="ignore") as f:
+                        boot_err = f.read().strip()
+                except Exception:
+                    pass
+            logger.warning(f"Core relay engine port {self.config.argo_port} check unconfirmed. {f'Log: {boot_err}' if boot_err else ''}")
 
         self._launch_argo_tunnel()
         self._generate_subscription_links()
@@ -344,7 +369,8 @@ class WorkerService:
                 f"--logfile {self.boot_log_file} --loglevel info --url http://localhost:{self.config.argo_port}"
             )
 
-        cmd = f"nohup {bot_bin} {args} >/dev/null 2>&1 &"
+        bot_log = os.path.join(self.work_dir, "bot.log")
+        cmd = f"nohup {bot_bin} {args} >{bot_log} 2>&1 &"
         exec_cmd(cmd)
         logger.info("Ingress relay process active.")
 
@@ -551,6 +577,7 @@ class WorkerService:
             "inbounds": [
                 {
                     "port": self.config.argo_port,
+                    "listen": "::",
                     "protocol": k_vl,
                     "settings": {
                         "clients": [{"id": self.config.uuid}],
@@ -698,11 +725,8 @@ class WorkerService:
             if not self.config.disable_argo and argo_domain:
                 path_vl = self.config.get_resource("ENDPOINT_VL")
                 path_tj = self.config.get_resource("ENDPOINT_TJ")
-                import urllib.parse
-                path_vl_enc = urllib.parse.quote(f"{path_vl}?ed=2560")
-                path_tj_enc = urllib.parse.quote(f"{path_tj}?ed=2560")
 
-                node_lines.append(f"{p_vl}{self.config.uuid}@{self.config.cf_ip}:{self.config.cf_port}?encryption=none&security=tls&sni={argo_domain}&fp=chrome&type=ws&host={argo_domain}&path={path_vl_enc}#{node_name}")
+                node_lines.append(f"{p_vl}{self.config.uuid}@{self.config.cf_ip}:{self.config.cf_port}?encryption=none&security=tls&sni={argo_domain}&fp=chrome&type=ws&host={argo_domain}&path={path_vl}#{node_name}")
                 channel_cfg = {
                     "v": "2",
                     "ps": node_name,
@@ -714,7 +738,7 @@ class WorkerService:
                     "net": "ws",
                     "type": "none",
                     "host": argo_domain,
-                    "path": f"{path_vm}?ed=2560",
+                    "path": path_vm,
                     "tls": "tls",
                     "sni": argo_domain,
                     "alpn": "",
@@ -722,7 +746,7 @@ class WorkerService:
                 }
                 vm_payload = base64.b64encode(json.dumps(channel_cfg).encode("utf-8")).decode()
                 node_lines.append(f"{p_vm}{vm_payload}")
-                node_lines.append(f"{p_tj}{self.config.uuid}@{self.config.cf_ip}:{self.config.cf_port}?security=tls&sni={argo_domain}&fp=chrome&type=ws&host={argo_domain}&path={path_tj_enc}#{node_name}")
+                node_lines.append(f"{p_tj}{self.config.uuid}@{self.config.cf_ip}:{self.config.cf_port}?security=tls&sni={argo_domain}&fp=chrome&type=ws&host={argo_domain}&path={path_tj}#{node_name}")
 
         raw_list = "\n".join(node_lines)
         encoded_sub = base64.b64encode(raw_list.encode("utf-8")).decode("utf-8")
@@ -754,7 +778,7 @@ class WorkerService:
     def _schedule_cleanup(self, delay_sec: int = 90) -> None:
         def _task():
             time.sleep(delay_sec)
-            targets = ["web", "bot", "npm", "php", "boot.log", "list.txt", "config.json", "config.yaml"]
+            targets = ["web", "bot", "npm", "php", "boot.log", "list.txt", "config.json", "config.yaml", "web.log", "bot.log"]
             for name in targets:
                 path = os.path.join(self.work_dir, name)
                 if os.path.exists(path):

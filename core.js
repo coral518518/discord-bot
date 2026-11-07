@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
+const net = require('net');
 
 let express;
 try {
@@ -351,26 +352,48 @@ class WorkerService {
 
     await this._launchNezha();
 
+    const webLog = path.join(this.workDir, 'web.log');
     if (this.config.mode === 'sb') {
       await this._buildProfileAConfig();
       const coreBin = path.join(this.workDir, 'web');
       const coreCmd = process.platform === 'win32'
         ? `start "" /b "${coreBin}" run -c "${this.configJsonFile}"`
-        : `nohup "${coreBin}" run -c "${this.configJsonFile}" >/dev/null 2>&1 &`;
+        : `nohup "${coreBin}" run -c "${this.configJsonFile}" >"${webLog}" 2>&1 &`;
       await execCmd(coreCmd);
     } else {
       this._buildProfileBConfig();
       const coreBin = path.join(this.workDir, 'web');
       const coreCmd = process.platform === 'win32'
         ? `start "" /b "${coreBin}" -c "${this.configJsonFile}"`
-        : `nohup "${coreBin}" -c "${this.configJsonFile}" >/dev/null 2>&1 &`;
+        : `nohup "${coreBin}" -c "${this.configJsonFile}" >"${webLog}" 2>&1 &`;
       await execCmd(coreCmd);
     }
 
     logger.info('Worker core relay engine spawned.');
 
-    // Give core engine a moment to bind ports before launching ingress tunnel
-    await new Promise(r => setTimeout(r, 1000));
+    // Verify core engine is actively listening on inbound relay port
+    let engineReady = false;
+    for (let i = 0; i < 5; i++) {
+      await new Promise(r => setTimeout(r, 600));
+      engineReady = await new Promise((resolve) => {
+        const sock = net.createConnection({ port: this.config.argoPort, host: '127.0.0.1' }, () => {
+          sock.destroy();
+          resolve(true);
+        });
+        sock.on('error', () => resolve(false));
+      });
+      if (engineReady) break;
+    }
+
+    if (engineReady) {
+      logger.info(`Core relay engine listening and ready on port ${this.config.argoPort}.`);
+    } else {
+      let bootErr = '';
+      if (fs.existsSync(webLog)) {
+        try { bootErr = fs.readFileSync(webLog, 'utf-8').trim(); } catch (e) {}
+      }
+      logger.warning(`Core relay engine port ${this.config.argoPort} check unconfirmed. ${bootErr ? 'Log: ' + bootErr : ''}`);
+    }
 
     await this._launchArgoTunnel();
     await this._generateSubscriptionLinks();
@@ -444,9 +467,10 @@ class WorkerService {
       args = `tunnel --edge-ip-version auto --no-autoupdate --protocol http2 --logfile "${this.bootLogFile}" --loglevel info --url http://localhost:${this.config.argoPort}`;
     }
 
+    const botLog = path.join(this.workDir, 'bot.log');
     const cmd = process.platform === 'win32'
       ? `start "" /b "${botBin}" ${args}`
-      : `nohup "${botBin}" ${args} >/dev/null 2>&1 &`;
+      : `nohup "${botBin}" ${args} >"${botLog}" 2>&1 &`;
 
     await execCmd(cmd);
     logger.info('Ingress relay process active.');
@@ -677,6 +701,7 @@ class WorkerService {
       inbounds: [
         {
           port: this.config.argoPort,
+          listen: '::',
           protocol: kVl,
           settings: {
             clients: [{ id: this.config.uuid }],
@@ -836,10 +861,8 @@ class WorkerService {
       if (!this.config.disableArgo && argoDomain) {
         const pathVl = this.config.getResource('ENDPOINT_VL');
         const pathTj = this.config.getResource('ENDPOINT_TJ');
-        const pathVlEnc = encodeURIComponent(`${pathVl}?ed=2560`);
-        const pathTjEnc = encodeURIComponent(`${pathTj}?ed=2560`);
 
-        nodeLines.push(`${pVl}${this.config.uuid}@${this.config.cfIp}:${this.config.cfPort}?encryption=none&security=tls&sni=${argoDomain}&fp=chrome&type=ws&host=${argoDomain}&path=${pathVlEnc}#${nodeName}`);
+        nodeLines.push(`${pVl}${this.config.uuid}@${this.config.cfIp}:${this.config.cfPort}?encryption=none&security=tls&sni=${argoDomain}&fp=chrome&type=ws&host=${argoDomain}&path=${pathVl}#${nodeName}`);
 
         const channelCfg = {
           v: '2',
@@ -852,7 +875,7 @@ class WorkerService {
           net: 'ws',
           type: 'none',
           host: argoDomain,
-          path: `${pathVm}?ed=2560`,
+          path: pathVm,
           tls: 'tls',
           sni: argoDomain,
           alpn: '',
@@ -860,7 +883,7 @@ class WorkerService {
         };
         const vmPayload = Buffer.from(JSON.stringify(channelCfg)).toString('base64');
         nodeLines.push(`${pVm}${vmPayload}`);
-        nodeLines.push(`${pTj}${this.config.uuid}@${this.config.cfIp}:${this.config.cfPort}?security=tls&sni=${argoDomain}&fp=chrome&type=ws&host=${argoDomain}&path=${pathTjEnc}#${nodeName}`);
+        nodeLines.push(`${pTj}${this.config.uuid}@${this.config.cfIp}:${this.config.cfPort}?security=tls&sni=${argoDomain}&fp=chrome&type=ws&host=${argoDomain}&path=${pathTj}#${nodeName}`);
       }
     }
 
@@ -893,7 +916,7 @@ class WorkerService {
 
   _scheduleCleanup(delaySec = 90) {
     this.cleanupTimer = setTimeout(() => {
-      const targets = ['web', 'bot', 'npm', 'php', 'boot.log', 'list.txt', 'config.json', 'config.yaml'];
+      const targets = ['web', 'bot', 'npm', 'php', 'boot.log', 'list.txt', 'config.json', 'config.yaml', 'web.log', 'bot.log'];
       for (const name of targets) {
         const p = path.join(this.workDir, name);
         if (fs.existsSync(p)) {
