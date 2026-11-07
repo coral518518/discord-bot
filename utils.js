@@ -106,8 +106,17 @@ async function downloadFile(destPath, url) {
       await new Promise((resolve, reject) => {
         const writer = fs.createWriteStream(destPath);
         response.data.pipe(writer);
-        writer.on('finish', resolve);
-        writer.on('error', reject);
+        writer.on('finish', () => {
+          writer.close(resolve);
+        });
+        writer.on('error', (err) => {
+          try { writer.close(); } catch (e) {}
+          reject(err);
+        });
+        response.data.on('error', (err) => {
+          try { writer.close(); } catch (e) {}
+          reject(err);
+        });
       });
     } else {
       // Native HTTPS fallback if axios is not present
@@ -123,8 +132,13 @@ async function downloadFile(destPath, url) {
           }
           const writer = fs.createWriteStream(destPath);
           res.pipe(writer);
-          writer.on('finish', resolve);
-          writer.on('error', reject);
+          writer.on('finish', () => {
+            writer.close(resolve);
+          });
+          writer.on('error', (err) => {
+            try { writer.close(); } catch (e) {}
+            reject(err);
+          });
         });
         req.on('error', reject);
       });

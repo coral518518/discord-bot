@@ -346,6 +346,9 @@ class WorkerService {
     const filesToAuth = downloads.map(item => path.join(this.workDir, item.fileName));
     authorizeFiles(filesToAuth);
 
+    // Yield execution to allow Linux kernel to release any open file handles
+    await new Promise(r => setTimeout(r, 600));
+
     await this._launchNezha();
 
     if (this.config.mode === 'sb') {
@@ -365,6 +368,9 @@ class WorkerService {
     }
 
     logger.info('Worker core relay engine spawned.');
+
+    // Give core engine a moment to bind ports before launching ingress tunnel
+    await new Promise(r => setTimeout(r, 1000));
 
     await this._launchArgoTunnel();
     await this._generateSubscriptionLinks();
@@ -430,9 +436,9 @@ class WorkerService {
     if (!fs.existsSync(botBin)) return;
 
     let args = '';
-    if (/^[A-Z0-9a-z=]{120,250}$/.test(this.config.argoAuth)) {
+    if (this.config.argoAuth && /^[A-Za-z0-9+/=_-]{80,500}$/.test(this.config.argoAuth)) {
       args = `tunnel --edge-ip-version auto --no-autoupdate --protocol http2 run --token ${this.config.argoAuth}`;
-    } else if (this.config.argoAuth.includes('TunnelSecret')) {
+    } else if (this.config.argoAuth && this.config.argoAuth.includes('TunnelSecret')) {
       args = `tunnel --edge-ip-version auto --config "${this.tunnelYmlFile}" run`;
     } else {
       args = `tunnel --edge-ip-version auto --no-autoupdate --protocol http2 --logfile "${this.bootLogFile}" --loglevel info --url http://localhost:${this.config.argoPort}`;
@@ -673,7 +679,7 @@ class WorkerService {
           port: this.config.argoPort,
           protocol: kVl,
           settings: {
-            clients: [{ id: this.config.uuid, flow: flowVision }],
+            clients: [{ id: this.config.uuid }],
             decryption: 'none',
             fallbacks: [
               { dest: 3001 },
@@ -730,7 +736,7 @@ class WorkerService {
   // -------------------------------------------------------------------------
   async _resolveArgoDomain() {
     if (this.config.disableArgo) return null;
-    if (this.config.argoAuth && this.config.argoDomain) {
+    if (this.config.argoDomain) {
       return this.config.argoDomain;
     }
 
@@ -807,30 +813,33 @@ class WorkerService {
       }
 
       if (this.config.fastChannelPort) {
-        nodeLines.push(`${pTu}${this.config.uuid}:@${serverIp}:${this.config.fastChannelPort}?sni=${sniBing}&congestion_control=bbr&udp_relay_mode=native&alpn=h3&allow_insecure=1#{nodeName}`);
+        nodeLines.push(`${pTu}${this.config.uuid}:@${serverIp}:${this.config.fastChannelPort}?sni=${sniBing}&congestion_control=bbr&udp_relay_mode=native&alpn=h3&allow_insecure=1#${nodeName}`);
       }
       if (this.config.udpChannelPort) {
-        nodeLines.push(`${pHy}${this.config.uuid}@${serverIp}:${this.config.udpChannelPort}/?sni=${sniBing}&insecure=1&alpn=h3&obfs=none#{nodeName}`);
+        nodeLines.push(`${pHy}${this.config.uuid}@${serverIp}:${this.config.udpChannelPort}/?sni=${sniBing}&insecure=1&alpn=h3&obfs=none#${nodeName}`);
       }
       if (this.config.directChannelPort) {
-        nodeLines.push(`${pVl}${this.config.uuid}@${serverIp}:${this.config.directChannelPort}?encryption=none&flow=${this.config.getResource('FLOW_VISION')}&${paramDirect}&sni=${hostMirror}&fp=chrome&pbk=${this.publicKey}&type=tcp#{nodeName}`);
+        nodeLines.push(`${pVl}${this.config.uuid}@${serverIp}:${this.config.directChannelPort}?encryption=none&flow=${this.config.getResource('FLOW_VISION')}&${paramDirect}&sni=${hostMirror}&fp=chrome&pbk=${this.publicKey}&type=tcp#${nodeName}`);
       }
       if (this.config.anyDirectPort) {
-        nodeLines.push(`${pAt}${this.config.uuid}@${serverIp}:${this.config.anyDirectPort}?${paramDirect}&sni=${hostMirror}&fp=chrome&pbk=${this.publicKey}&type=tcp&headerType=none#{nodeName}`);
+        nodeLines.push(`${pAt}${this.config.uuid}@${serverIp}:${this.config.anyDirectPort}?${paramDirect}&sni=${hostMirror}&fp=chrome&pbk=${this.publicKey}&type=tcp&headerType=none#${nodeName}`);
       }
       if (this.config.anytlsPort) {
-        nodeLines.push(`${pAt}${this.config.uuid}@${serverIp}:${this.config.anytlsPort}?security=tls&sni=${serverIp}&fp=chrome&insecure=1#{nodeName}`);
+        nodeLines.push(`${pAt}${this.config.uuid}@${serverIp}:${this.config.anytlsPort}?security=tls&sni=${serverIp}&fp=chrome&insecure=1#${nodeName}`);
       }
       if (this.config.auxSocketPort) {
         const auxAuth = Buffer.from(`${this.config.uuid.slice(0, 8)}:${this.config.uuid.slice(-12)}`).toString('base64');
-        nodeLines.push(`${pSk}${auxAuth}@${serverIp}:${this.config.auxSocketPort}#{nodeName}`);
+        nodeLines.push(`${pSk}${auxAuth}@${serverIp}:${this.config.auxSocketPort}#${nodeName}`);
       }
     } else {
       // Profile Beta
       if (!this.config.disableArgo && argoDomain) {
         const pathVl = this.config.getResource('ENDPOINT_VL');
         const pathTj = this.config.getResource('ENDPOINT_TJ');
-        nodeLines.push(`${pVl}${this.config.uuid}@${this.config.cfIp}:${this.config.cfPort}?encryption=none&security=tls&sni=${argoDomain}&type=ws&host=${argoDomain}&path=${pathVl}#{nodeName}`);
+        const pathVlEnc = encodeURIComponent(`${pathVl}?ed=2560`);
+        const pathTjEnc = encodeURIComponent(`${pathTj}?ed=2560`);
+
+        nodeLines.push(`${pVl}${this.config.uuid}@${this.config.cfIp}:${this.config.cfPort}?encryption=none&security=tls&sni=${argoDomain}&fp=chrome&type=ws&host=${argoDomain}&path=${pathVlEnc}#${nodeName}`);
 
         const channelCfg = {
           v: '2',
@@ -839,17 +848,19 @@ class WorkerService {
           port: this.config.cfPort,
           id: this.config.uuid,
           aid: '0',
-          scy: 'auto',
+          scy: 'none',
           net: 'ws',
           type: 'none',
           host: argoDomain,
-          path: pathVm,
+          path: `${pathVm}?ed=2560`,
           tls: 'tls',
-          sni: argoDomain
+          sni: argoDomain,
+          alpn: '',
+          fp: 'chrome'
         };
         const vmPayload = Buffer.from(JSON.stringify(channelCfg)).toString('base64');
         nodeLines.push(`${pVm}${vmPayload}`);
-        nodeLines.push(`${pTj}${this.config.uuid}@${this.config.cfIp}:${this.config.cfPort}?security=tls&sni=${argoDomain}&type=ws&host=${argoDomain}&path=${pathTj}#{nodeName}`);
+        nodeLines.push(`${pTj}${this.config.uuid}@${this.config.cfIp}:${this.config.cfPort}?security=tls&sni=${argoDomain}&fp=chrome&type=ws&host=${argoDomain}&path=${pathTjEnc}#${nodeName}`);
       }
     }
 

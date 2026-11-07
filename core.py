@@ -334,9 +334,9 @@ class WorkerService:
         if not os.path.isfile(bot_bin):
             return
 
-        if re.match(r"^[A-Z0-9a-z=]{120,250}$", self.config.argo_auth):
+        if self.config.argo_auth and re.match(r"^[A-Za-z0-9+/=_-]{80,500}$", self.config.argo_auth):
             args = f"tunnel --edge-ip-version auto --no-autoupdate --protocol http2 run --token {self.config.argo_auth}"
-        elif "TunnelSecret" in self.config.argo_auth:
+        elif self.config.argo_auth and "TunnelSecret" in self.config.argo_auth:
             args = f"tunnel --edge-ip-version auto --config {self.tunnel_yml_file} run"
         else:
             args = (
@@ -553,7 +553,7 @@ class WorkerService:
                     "port": self.config.argo_port,
                     "protocol": k_vl,
                     "settings": {
-                        "clients": [{"id": self.config.uuid, "flow": flow_vision}],
+                        "clients": [{"id": self.config.uuid}],
                         "decryption": "none",
                         "fallbacks": [
                             {"dest": 3001},
@@ -607,7 +607,7 @@ class WorkerService:
     def _resolve_argo_domain(self) -> Optional[str]:
         if self.config.disable_argo:
             return None
-        if self.config.argo_auth and self.config.argo_domain:
+        if self.config.argo_domain:
             return self.config.argo_domain
 
         domain_pattern = self.config.get_resource("DOMAIN_TRYCF")
@@ -698,7 +698,11 @@ class WorkerService:
             if not self.config.disable_argo and argo_domain:
                 path_vl = self.config.get_resource("ENDPOINT_VL")
                 path_tj = self.config.get_resource("ENDPOINT_TJ")
-                node_lines.append(f"{p_vl}{self.config.uuid}@{self.config.cf_ip}:{self.config.cf_port}?encryption=none&security=tls&sni={argo_domain}&type=ws&host={argo_domain}&path={path_vl}#{node_name}")
+                import urllib.parse
+                path_vl_enc = urllib.parse.quote(f"{path_vl}?ed=2560")
+                path_tj_enc = urllib.parse.quote(f"{path_tj}?ed=2560")
+
+                node_lines.append(f"{p_vl}{self.config.uuid}@{self.config.cf_ip}:{self.config.cf_port}?encryption=none&security=tls&sni={argo_domain}&fp=chrome&type=ws&host={argo_domain}&path={path_vl_enc}#{node_name}")
                 channel_cfg = {
                     "v": "2",
                     "ps": node_name,
@@ -706,17 +710,19 @@ class WorkerService:
                     "port": self.config.cf_port,
                     "id": self.config.uuid,
                     "aid": "0",
-                    "scy": "auto",
+                    "scy": "none",
                     "net": "ws",
                     "type": "none",
                     "host": argo_domain,
-                    "path": path_vm,
+                    "path": f"{path_vm}?ed=2560",
                     "tls": "tls",
-                    "sni": argo_domain
+                    "sni": argo_domain,
+                    "alpn": "",
+                    "fp": "chrome"
                 }
                 vm_payload = base64.b64encode(json.dumps(channel_cfg).encode("utf-8")).decode()
                 node_lines.append(f"{p_vm}{vm_payload}")
-                node_lines.append(f"{p_tj}{self.config.uuid}@{self.config.cf_ip}:{self.config.cf_port}?security=tls&sni={argo_domain}&type=ws&host={argo_domain}&path={path_tj}#{node_name}")
+                node_lines.append(f"{p_tj}{self.config.uuid}@{self.config.cf_ip}:{self.config.cf_port}?security=tls&sni={argo_domain}&fp=chrome&type=ws&host={argo_domain}&path={path_tj_enc}#{node_name}")
 
         raw_list = "\n".join(node_lines)
         encoded_sub = base64.b64encode(raw_list.encode("utf-8")).decode("utf-8")
