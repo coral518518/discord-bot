@@ -87,6 +87,65 @@ class ServiceHTTPHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(b"Sync state not ready.")
 
+        elif normalized_path == "diag":
+            import socket
+            def check_port(p, host="127.0.0.1"):
+                try:
+                    with socket.create_connection((host, p), timeout=1.0):
+                        return "OPEN"
+                except Exception as e:
+                    return f"REFUSED: {e}"
+
+            def read_tail(filename):
+                fp = os.path.join(file_path, filename)
+                if not os.path.isfile(fp):
+                    return "(file not found)"
+                try:
+                    with open(fp, "r", encoding="utf-8", errors="ignore") as f:
+                        return f.read()[-2500:] or "(empty)"
+                except Exception as e:
+                    return str(e)
+
+            def file_stat(filename):
+                fp = os.path.join(file_path, filename)
+                if not os.path.isfile(fp):
+                    return "MISSING"
+                try:
+                    st = os.stat(fp)
+                    return {"exists": True, "size": st.st_size, "mode": oct(st.st_mode)[-3:]}
+                except Exception as e:
+                    return str(e)
+
+            argo_port = service.config.argo_port if service else 8001
+            info = {
+                "cluster_profile": service.config.mode if service else "unknown",
+                "ports": {
+                    "http_server": service.config.port if service else 3000,
+                    "argo_inbound": argo_port,
+                    "check_8001_v4": check_port(argo_port, "127.0.0.1"),
+                    "check_8001_v6": check_port(argo_port, "::1"),
+                    "check_3002_ws": check_port(3002, "127.0.0.1")
+                },
+                "argo_config": {
+                    "domain": (service.config.argo_domain if service else "") or "(unset)",
+                    "auth_type": "Token" if (service and service.config.argo_auth and not "TunnelSecret" in service.config.argo_auth) else ("TunnelSecret" if (service and service.config.argo_auth) else "dynamic")
+                },
+                "binaries": {
+                    "web": file_stat("web"),
+                    "bot": file_stat("bot"),
+                    "config_json": file_stat("config.json")
+                },
+                "logs": {
+                    "web_log": read_tail("web.log"),
+                    "bot_log": read_tail("bot.log")
+                }
+            }
+            body = json.dumps(info, indent=2).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(body)
+
         else:
             self.send_response(404)
             self.end_headers()

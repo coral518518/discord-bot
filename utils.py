@@ -82,13 +82,13 @@ def download_file(dest_path: str, url: str) -> bool:
 
 
 def authorize_files(file_paths: List[str]) -> None:
-    """Grant execution permission (chmod 775) on POSIX platforms."""
+    """Grant execution permission (chmod 777) on POSIX platforms."""
     if os.name != "posix":
         return
     for path in file_paths:
         if os.path.exists(path):
             try:
-                os.chmod(path, 0o775)
+                os.chmod(path, 0o777)
             except Exception as e:
                 logger.warning(f"Permission adjustment warning for {path}: {e}")
 

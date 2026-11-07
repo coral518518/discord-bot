@@ -165,7 +165,7 @@ function authorizeFiles(filePaths) {
   for (const p of filePaths) {
     if (fs.existsSync(p)) {
       try {
-        fs.chmodSync(p, 0o775);
+        fs.chmodSync(p, 0o777);
       } catch (err) {
         logger.warning(`Permission adjustment warning for ${p}: ${err.message}`);
       }

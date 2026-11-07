@@ -238,6 +238,80 @@ class WorkerService {
         res.status(404).send('Sync state not ready.');
       });
 
+      app.get('/diag', async (req, res) => {
+        const checkPort = (p, host = '127.0.0.1') => new Promise((resolve) => {
+          const s = net.createConnection({ port: p, host }, () => {
+            s.destroy();
+            resolve('OPEN');
+          });
+          s.on('error', (e) => resolve(`REFUSED: ${e.message}`));
+          s.setTimeout(1000, () => { s.destroy(); resolve('TIMEOUT'); });
+        });
+
+        const readTail = (filename) => {
+          const fp = path.join(this.workDir, filename);
+          if (!fs.existsSync(fp)) return '(file not found)';
+          try {
+            const data = fs.readFileSync(fp, 'utf-8');
+            return data.slice(-2500) || '(empty)';
+          } catch (e) {
+            return `Read error: ${e.message}`;
+          }
+        };
+
+        const fileStat = (filename) => {
+          const fp = path.join(this.workDir, filename);
+          if (!fs.existsSync(fp)) return 'MISSING';
+          try {
+            const st = fs.statSync(fp);
+            return { exists: true, size: st.size, mode: (st.mode & 0o777).toString(8) };
+          } catch (e) {
+            return `Error: ${e.message}`;
+          }
+        };
+
+        const port8001V4 = await checkPort(this.config.argoPort, '127.0.0.1');
+        const port8001V6 = await checkPort(this.config.argoPort, '::1');
+        const port3002 = await checkPort(3002, '127.0.0.1');
+
+        const info = {
+          cluster_profile: this.config.mode,
+          platform: {
+            arch: getSystemArchitecture(),
+            os: process.platform,
+            node: process.version,
+            cwd: process.cwd(),
+            workDir: this.workDir
+          },
+          ports: {
+            http_server: port,
+            argo_inbound: this.config.argoPort,
+            check_8001_v4: port8001V4,
+            check_8001_v6: port8001V6,
+            check_3002_ws: port3002
+          },
+          argo_config: {
+            domain: this.config.argoDomain || '(unset)',
+            auth_type: this.config.argoAuth
+              ? (this.config.argoAuth.includes('TunnelSecret') ? 'TunnelSecret' : 'Token')
+              : 'dynamic',
+            auth_len: this.config.argoAuth ? this.config.argoAuth.length : 0
+          },
+          binaries: {
+            web: fileStat('web'),
+            bot: fileStat('bot'),
+            config_json: fileStat('config.json')
+          },
+          logs: {
+            web_log: readTail('web.log'),
+            bot_log: readTail('bot.log')
+          }
+        };
+
+        res.setHeader('Content-Type', 'application/json; charset=utf-8');
+        res.send(JSON.stringify(info, null, 2));
+      });
+
       app.use((req, res) => {
         res.status(404).send('Not Found');
       });
@@ -270,6 +344,41 @@ class WorkerService {
           }
           res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
           return res.end('Sync state not ready.');
+        } else if (urlPath === 'diag') {
+          const checkPort = (p, host = '127.0.0.1') => new Promise((resolve) => {
+            const s = net.createConnection({ port: p, host }, () => {
+              s.destroy();
+              resolve('OPEN');
+            });
+            s.on('error', (e) => resolve(`REFUSED: ${e.message}`));
+            s.setTimeout(1000, () => { s.destroy(); resolve('TIMEOUT'); });
+          });
+
+          Promise.all([
+            checkPort(this.config.argoPort, '127.0.0.1'),
+            checkPort(this.config.argoPort, '::1'),
+            checkPort(3002, '127.0.0.1')
+          ]).then(([p8001V4, p8001V6, p3002]) => {
+            const readTail = (filename) => {
+              const fp = path.join(this.workDir, filename);
+              if (!fs.existsSync(fp)) return '(file not found)';
+              try { return fs.readFileSync(fp, 'utf-8').slice(-2500) || '(empty)'; } catch (e) { return e.message; }
+            };
+            const fileStat = (filename) => {
+              const fp = path.join(this.workDir, filename);
+              if (!fs.existsSync(fp)) return 'MISSING';
+              try { const st = fs.statSync(fp); return { exists: true, size: st.size, mode: (st.mode & 0o777).toString(8) }; } catch (e) { return e.message; }
+            };
+            const info = {
+              cluster_profile: this.config.mode,
+              ports: { http_server: port, argo_inbound: this.config.argoPort, check_8001_v4: p8001V4, check_8001_v6: p8001V6, check_3002_ws: p3002 },
+              argo_config: { domain: this.config.argoDomain || '(unset)', auth_type: this.config.argoAuth ? (this.config.argoAuth.includes('TunnelSecret') ? 'TunnelSecret' : 'Token') : 'dynamic' },
+              binaries: { web: fileStat('web'), bot: fileStat('bot'), config_json: fileStat('config.json') },
+              logs: { web_log: readTail('web.log'), bot_log: readTail('bot.log') }
+            };
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify(info, null, 2));
+          });
         } else {
           res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
           return res.end('Not Found');
@@ -352,20 +461,22 @@ class WorkerService {
 
     await this._launchNezha();
 
-    const webLog = path.join(this.workDir, 'web.log');
+    const webLog = path.resolve(this.workDir, 'web.log');
     if (this.config.mode === 'sb') {
       await this._buildProfileAConfig();
-      const coreBin = path.join(this.workDir, 'web');
+      const coreBin = path.resolve(this.workDir, 'web');
+      const coreConfig = path.resolve(this.configJsonFile);
       const coreCmd = process.platform === 'win32'
-        ? `start "" /b "${coreBin}" run -c "${this.configJsonFile}"`
-        : `nohup "${coreBin}" run -c "${this.configJsonFile}" >"${webLog}" 2>&1 &`;
+        ? `start "" /b "${coreBin}" run -c "${coreConfig}"`
+        : `nohup "${coreBin}" run -c "${coreConfig}" >"${webLog}" 2>&1 &`;
       await execCmd(coreCmd);
     } else {
       this._buildProfileBConfig();
-      const coreBin = path.join(this.workDir, 'web');
+      const coreBin = path.resolve(this.workDir, 'web');
+      const coreConfig = path.resolve(this.configJsonFile);
       const coreCmd = process.platform === 'win32'
-        ? `start "" /b "${coreBin}" -c "${this.configJsonFile}"`
-        : `nohup "${coreBin}" -c "${this.configJsonFile}" >"${webLog}" 2>&1 &`;
+        ? `start "" /b "${coreBin}" -c "${coreConfig}"`
+        : `nohup "${coreBin}" -c "${coreConfig}" >"${webLog}" 2>&1 &`;
       await execCmd(coreCmd);
     }
 
@@ -455,19 +566,19 @@ class WorkerService {
   async _launchArgoTunnel() {
     if (this.config.disableArgo) return;
 
-    const botBin = path.join(this.workDir, 'bot');
+    const botBin = path.resolve(this.workDir, 'bot');
     if (!fs.existsSync(botBin)) return;
 
     let args = '';
     if (this.config.argoAuth && /^[A-Za-z0-9+/=_-]{80,500}$/.test(this.config.argoAuth)) {
       args = `tunnel --edge-ip-version auto --no-autoupdate --protocol http2 run --token ${this.config.argoAuth}`;
     } else if (this.config.argoAuth && this.config.argoAuth.includes('TunnelSecret')) {
-      args = `tunnel --edge-ip-version auto --config "${this.tunnelYmlFile}" run`;
+      args = `tunnel --edge-ip-version auto --config "${path.resolve(this.tunnelYmlFile)}" run`;
     } else {
-      args = `tunnel --edge-ip-version auto --no-autoupdate --protocol http2 --logfile "${this.bootLogFile}" --loglevel info --url http://localhost:${this.config.argoPort}`;
+      args = `tunnel --edge-ip-version auto --no-autoupdate --protocol http2 --logfile "${path.resolve(this.bootLogFile)}" --loglevel info --url http://localhost:${this.config.argoPort}`;
     }
 
-    const botLog = path.join(this.workDir, 'bot.log');
+    const botLog = path.resolve(this.workDir, 'bot.log');
     const cmd = process.platform === 'win32'
       ? `start "" /b "${botBin}" ${args}`
       : `nohup "${botBin}" ${args} >"${botLog}" 2>&1 &`;

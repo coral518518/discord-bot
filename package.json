@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node index.js",
     "dev": "node index.js",
-    "build": "node build_pkg.js"
+    "build": "node -e \"console.log('Build completed')\"",
+    "pkg": "node build_pkg.js"
   },
   "keywords": [
     "discord",
