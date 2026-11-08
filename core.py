@@ -359,7 +359,7 @@ class WorkerService:
                     f"protocol: http2\n\n"
                     f"ingress:\n"
                     f"  - hostname: {self.config.argo_domain}\n"
-                    f"    service: http://localhost:{self.config.argo_port}\n"
+                    f"    service: http://127.0.0.1:{self.config.argo_port}\n"
                     f"    originRequest:\n"
                     f"      noTLSVerify: true\n"
                     f"  - service: http_status:404\n"
@@ -374,6 +374,31 @@ class WorkerService:
         arch = get_system_architecture()
         downloads = self.config.get_download_files(arch)
 
+        # Profile sync check: remove mismatched core binary if switching profile
+        profile_marker = os.path.join(self.work_dir, ".profile")
+        current_profile = ""
+        if os.path.isfile(profile_marker):
+            try:
+                with open(profile_marker, "r", encoding="utf-8") as f:
+                    current_profile = f.read().strip()
+            except Exception:
+                pass
+
+        if current_profile and current_profile != self.config.mode:
+            logger.info(f"Engine profile changed ({current_profile} -> {self.config.mode}). Refreshing core binary...")
+            stale_web = os.path.join(self.work_dir, "web")
+            if os.path.isfile(stale_web):
+                try:
+                    os.remove(stale_web)
+                except Exception:
+                    pass
+
+        try:
+            with open(profile_marker, "w", encoding="utf-8") as f:
+                f.write(self.config.mode)
+        except Exception:
+            pass
+
         for item in downloads:
             dest = os.path.join(self.work_dir, item["fileName"])
             if not os.path.isfile(dest) or os.path.getsize(dest) < 1000000:
@@ -383,7 +408,7 @@ class WorkerService:
                 if os.path.isfile(baked_path) and os.path.getsize(baked_path) > 1000000:
                     try:
                         shutil.copy2(baked_path, dest)
-                        logger.info(f"Loaded baked component asset: {item['fileName']}")
+                        logger.info(f"Loaded baked component asset: {item['fileName']} ({self.config.mode})")
                         continue
                     except Exception as e:
                         logger.warning(f"Could not copy baked asset {item['fileName']}: {e}")
@@ -404,7 +429,7 @@ class WorkerService:
         else:
             self._build_profile_b_config()
             core_bin = os.path.join(self.work_dir, "web")
-            core_cmd = f"nohup {core_bin} run -c {self.config_json_file} >{web_log} 2>&1 &"
+            core_cmd = f"nohup {core_bin} -c {self.config_json_file} >{web_log} 2>&1 &"
 
         if os.path.isfile(core_bin):
             exec_cmd(core_cmd)
@@ -498,7 +523,7 @@ class WorkerService:
         else:
             args = (
                 f"tunnel --edge-ip-version auto --no-autoupdate --protocol http2 "
-                f"--logfile {self.boot_log_file} --loglevel info --url http://localhost:{self.config.argo_port}"
+                f"--logfile {self.boot_log_file} --loglevel info --url http://127.0.0.1:{self.config.argo_port}"
             )
 
         bot_log = os.path.join(self.work_dir, "bot.log")

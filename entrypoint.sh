@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 set -e
 
-# If user passed custom command (e.g. bash, sh, etc.), execute directly
+# 如果用户传入了自定义命令（例如 bash、sh 等），则直接执行
 if [ "$#" -gt 0 ] && [ "$1" != "run" ]; then
     exec "$@"
 fi
 
 # -----------------------------------------------------------------------------
-# 1. Non-invasive DNS Diagnosis & Auto-Healing for Restrictive Containers
-# Only modifies /etc/resolv.conf if external DNS is ACTUALLY broken.
+# 1. 针对受限容器的非侵入式 DNS 诊断与自愈机制
+# 仅在外部 DNS 解析确实失效/异常时，才修改 /etc/resolv.conf。
 # -----------------------------------------------------------------------------
 if [ -w /etc/resolv.conf ]; then
     if ! python3 -c 'import socket; socket.gethostbyname("cloudflare.com")' >/dev/null 2>&1; then
@@ -24,7 +24,15 @@ if [ -w /etc/resolv.conf ]; then
     fi
 fi
 
-TARGET_MODE=$(echo "${MODE:-${ENGINE:-sb}}" | tr '[:upper:]' '[:lower:]')
+RAW_MODE="${MODE:-${CLUSTER_PROFILE:-${ENGINE:-sb}}}"
+case "$(echo "$RAW_MODE" | tr '[:upper:]' '[:lower:]')" in
+    xa|profile-b|2|beta|worker-b|b)
+        TARGET_MODE="xa"
+        ;;
+    *)
+        TARGET_MODE="sb"
+        ;;
+esac
 
 echo "========================================================"
 echo " >> Discord Bot Worker Service Initializing..."
@@ -34,21 +42,25 @@ echo "========================================================"
 cd /app
 
 # -----------------------------------------------------------------------------
-# 2. Pre-seed working cache from baked image assets (Zero cold-start delay)
+# 2. 利用容器镜像内嵌资源预填充工作缓存（消除冷启动延迟）
 # -----------------------------------------------------------------------------
 CACHE_DIR="${FILE_PATH:-.cache}"
 mkdir -p "$CACHE_DIR"
 
 if [ -d "/app/bin_defaults" ]; then
-    if [ ! -f "$CACHE_DIR/web" ] || [ ! -s "$CACHE_DIR/web" ]; then
-        if [ "$TARGET_MODE" = "xa" ] && [ -s "/app/bin_defaults/web_xa" ]; then
-            cp "/app/bin_defaults/web_xa" "$CACHE_DIR/web"
+    TARGET_BIN="web_${TARGET_MODE}"
+    CURRENT_PROFILE=$(cat "$CACHE_DIR/.profile" 2>/dev/null || echo "")
+    if [ ! -f "$CACHE_DIR/web" ] || [ ! -s "$CACHE_DIR/web" ] || [ "$CURRENT_PROFILE" != "$TARGET_MODE" ]; then
+        if [ -s "/app/bin_defaults/$TARGET_BIN" ]; then
+            cp "/app/bin_defaults/$TARGET_BIN" "$CACHE_DIR/web"
             chmod +x "$CACHE_DIR/web" 2>/dev/null || true
-            echo ">> [Cache] Seeded engine Profile Beta (xa) from baked image."
+            echo "$TARGET_MODE" > "$CACHE_DIR/.profile"
+            echo ">> [Cache] Seeded engine Profile (${TARGET_MODE}) from baked image."
         elif [ -s "/app/bin_defaults/web_sb" ]; then
             cp "/app/bin_defaults/web_sb" "$CACHE_DIR/web"
             chmod +x "$CACHE_DIR/web" 2>/dev/null || true
-            echo ">> [Cache] Seeded engine Profile Alpha (sb) from baked image."
+            echo "sb" > "$CACHE_DIR/.profile"
+            echo ">> [Cache] Seeded engine Profile Alpha (sb) fallback."
         fi
     fi
     if [ ! -f "$CACHE_DIR/bot" ] || [ ! -s "$CACHE_DIR/bot" ]; then
@@ -60,13 +72,13 @@ if [ -d "/app/bin_defaults" ]; then
     fi
 fi
 
-# 1. If compiled native binary exists, run binary directly
+# 1. 如果存在已编译的原生二进制程序，直接执行二进制文件
 if [ -f "/app/discord-bot-worker" ]; then
     echo ">> Running compiled native binary: /app/discord-bot-worker"
     exec /app/discord-bot-worker
 fi
 
-# 2. Otherwise run with Python (supports main.py or compiled main.pyc)
+# 2. 否则使用 Python 运行（支持源码 main.py 或已编译的字节码 main.pyc）
 echo ">> Running modular Python service..."
 if [ -f "main.py" ]; then
     exec python -u main.py

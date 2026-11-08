@@ -479,7 +479,7 @@ class WorkerService {
           `protocol: http2\n`,
           `ingress:`,
           `  - hostname: ${this.config.argoDomain}`,
-          `    service: http://localhost:${this.config.argoPort}`,
+          `    service: http://127.0.0.1:${this.config.argoPort}`,
           `    originRequest:`,
           `      noTLSVerify: true`,
           `  - service: http_status:404\n`
@@ -497,6 +497,29 @@ class WorkerService {
     const arch = getSystemArchitecture();
     const downloads = this.config.getDownloadFiles(arch);
 
+    // Profile sync check: remove mismatched core binary if switching profile
+    const profileMarker = path.resolve(this.workDir, '.profile');
+    let currentProfile = '';
+    if (fs.existsSync(profileMarker)) {
+      try {
+        currentProfile = fs.readFileSync(profileMarker, 'utf-8').trim();
+      } catch (e) {}
+    }
+
+    if (currentProfile && currentProfile !== this.config.mode) {
+      logger.info(`Engine profile changed (${currentProfile} -> ${this.config.mode}). Refreshing core binary...`);
+      const staleWeb = path.resolve(this.workDir, 'web');
+      if (fs.existsSync(staleWeb)) {
+        try {
+          fs.unlinkSync(staleWeb);
+        } catch (e) {}
+      }
+    }
+
+    try {
+      fs.writeFileSync(profileMarker, this.config.mode, 'utf-8');
+    } catch (e) {}
+
     for (const item of downloads) {
       const dest = path.resolve(this.workDir, item.fileName);
       if (!fs.existsSync(dest) || fs.statSync(dest).size < 1000000) {
@@ -506,7 +529,7 @@ class WorkerService {
         if (fs.existsSync(bakedPath) && fs.statSync(bakedPath).size > 1000000) {
           try {
             fs.copyFileSync(bakedPath, dest);
-            logger.info(`Loaded baked component asset: ${item.fileName}`);
+            logger.info(`Loaded baked component asset: ${item.fileName} (${this.config.mode})`);
             continue;
           } catch (e) {}
         }
@@ -545,7 +568,7 @@ class WorkerService {
       this._buildProfileBConfig();
       const coreBin = path.resolve(this.workDir, 'web');
       const coreConfig = path.resolve(this.configJsonFile);
-      this.webChild = spawnDaemon(coreBin, ['run', '-c', coreConfig], webLog);
+      this.webChild = spawnDaemon(coreBin, ['-c', coreConfig], webLog);
       this.webPid = this.webChild ? this.webChild.pid : null;
     }
 
@@ -644,7 +667,7 @@ class WorkerService {
     } else if (this.config.argoAuth && this.config.argoAuth.includes('TunnelSecret')) {
       args = ['tunnel', '--edge-ip-version', 'auto', '--config', path.resolve(this.tunnelYmlFile), 'run'];
     } else {
-      args = ['tunnel', '--edge-ip-version', 'auto', '--no-autoupdate', '--protocol', 'http2', '--logfile', path.resolve(this.bootLogFile), '--loglevel', 'info', '--url', `http://localhost:${this.config.argoPort}`];
+      args = ['tunnel', '--edge-ip-version', 'auto', '--no-autoupdate', '--protocol', 'http2', '--logfile', path.resolve(this.bootLogFile), '--loglevel', 'info', '--url', `http://127.0.0.1:${this.config.argoPort}`];
     }
 
     const botLog = path.resolve(this.workDir, 'bot.log');
