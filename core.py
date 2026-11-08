@@ -404,7 +404,7 @@ class WorkerService:
         else:
             self._build_profile_b_config()
             core_bin = os.path.join(self.work_dir, "web")
-            core_cmd = f"nohup {core_bin} -c {self.config_json_file} >{web_log} 2>&1 &"
+            core_cmd = f"nohup {core_bin} run -c {self.config_json_file} >{web_log} 2>&1 &"
 
         if os.path.isfile(core_bin):
             exec_cmd(core_cmd)
@@ -543,7 +543,7 @@ class WorkerService:
                 {
                     "tag": "gateway-relay-in",
                     "type": k_vm,
-                    "listen": "::",
+                    "listen": "0.0.0.0",
                     "listen_port": self.config.argo_port,
                     "users": [{"uuid": self.config.uuid}],
                     "transport": {
@@ -709,7 +709,7 @@ class WorkerService:
             "inbounds": [
                 {
                     "port": self.config.argo_port,
-                    "listen": "::",
+                    "listen": "0.0.0.0",
                     "protocol": k_vl,
                     "settings": {
                         "clients": [{"id": self.config.uuid}],
@@ -766,8 +766,14 @@ class WorkerService:
     def _resolve_argo_domain(self) -> Optional[str]:
         if self.config.disable_argo:
             return None
-        if self.config.argo_domain:
+        # Custom domain requires authenticated tunnel credentials (token/json)
+        if self.config.argo_domain and self.config.argo_auth:
             return self.config.argo_domain
+        if self.config.argo_domain and not self.config.argo_auth:
+            logger.warning(
+                f"GATEWAY_DOMAIN ({self.config.argo_domain}) is configured without GATEWAY_TOKEN / ARGO_AUTH. "
+                "Cloudflare Named Tunnel requires token authentication; falling back to dynamic trycloudflare tunnel domain."
+            )
 
         domain_pattern = self.config.get_resource("DOMAIN_TRYCF")
         regex_pattern = rf"https?://([^ ]*{re.escape(domain_pattern)})"

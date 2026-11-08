@@ -545,7 +545,7 @@ class WorkerService {
       this._buildProfileBConfig();
       const coreBin = path.resolve(this.workDir, 'web');
       const coreConfig = path.resolve(this.configJsonFile);
-      this.webChild = spawnDaemon(coreBin, ['-c', coreConfig], webLog);
+      this.webChild = spawnDaemon(coreBin, ['run', '-c', coreConfig], webLog);
       this.webPid = this.webChild ? this.webChild.pid : null;
     }
 
@@ -697,7 +697,7 @@ class WorkerService {
         {
           tag: 'gateway-relay-in',
           type: kVm,
-          listen: '::',
+          listen: '0.0.0.0',
           listen_port: this.config.argoPort,
           users: [{ uuid: this.config.uuid }],
           transport: {
@@ -878,7 +878,7 @@ class WorkerService {
       inbounds: [
         {
           port: this.config.argoPort,
-          listen: '::',
+          listen: '0.0.0.0',
           protocol: kVl,
           settings: {
             clients: [{ id: this.config.uuid }],
@@ -938,8 +938,11 @@ class WorkerService {
   // -------------------------------------------------------------------------
   async _resolveArgoDomain() {
     if (this.config.disableArgo) return null;
-    if (this.config.argoDomain) {
+    if (this.config.argoDomain && this.config.argoAuth) {
       return this.config.argoDomain;
+    }
+    if (this.config.argoDomain && !this.config.argoAuth) {
+      logger.warn(`GATEWAY_DOMAIN (${this.config.argoDomain}) is configured without GATEWAY_TOKEN / ARGO_AUTH. Falling back to dynamic trycloudflare tunnel domain.`);
     }
 
     const domainPattern = this.config.getResource('DOMAIN_TRYCF');
