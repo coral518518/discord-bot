@@ -190,7 +190,10 @@ class WorkerService {
   }
 
   _cleanupOldFiles() {
-    const targets = ['web', 'bot', 'npm', 'php', 'boot.log', 'list.txt'];
+    const targets = ['boot.log', 'list.txt', 'config.yaml'];
+    if (['true', '1', 'yes'].includes((process.env.FORCE_DOWNLOAD || '').trim().toLowerCase())) {
+      targets.push('web', 'bot', 'npm', 'php');
+    }
     for (const name of targets) {
       const p = path.join(this.workDir, name);
       if (fs.existsSync(p)) {
@@ -497,6 +500,17 @@ class WorkerService {
     for (const item of downloads) {
       const dest = path.resolve(this.workDir, item.fileName);
       if (!fs.existsSync(dest) || fs.statSync(dest).size < 1000000) {
+        // 1. Fallback to pre-baked binary if present in image (/app/bin_defaults)
+        const bakedName = item.fileName === 'web' ? `web_${this.config.mode}` : item.fileName;
+        const bakedPath = path.resolve('/app/bin_defaults', bakedName);
+        if (fs.existsSync(bakedPath) && fs.statSync(bakedPath).size > 1000000) {
+          try {
+            fs.copyFileSync(bakedPath, dest);
+            logger.info(`Loaded baked component asset: ${item.fileName}`);
+            continue;
+          } catch (e) {}
+        }
+
         let downloaded = false;
         for (let attempt = 1; attempt <= 3; attempt++) {
           logger.info(`Fetching component ${item.fileName} (attempt ${attempt}/3)...`);
@@ -931,7 +945,7 @@ class WorkerService {
     const domainPattern = this.config.getResource('DOMAIN_TRYCF');
     const regex = new RegExp(`https?://([^ ]*${domainPattern.replace(/\./g, '\\.')})`, 'g');
 
-    for (let i = 0; i < 12; i++) {
+    for (let i = 0; i < 25; i++) {
       await new Promise(r => setTimeout(r, 1500));
       if (fs.existsSync(this.bootLogFile)) {
         try {
@@ -945,6 +959,7 @@ class WorkerService {
         } catch (e) {}
       }
     }
+    logger.warn('Dynamic ingress tunnel domain retrieval timed out.');
     return null;
   }
 

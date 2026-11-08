@@ -1,5 +1,6 @@
 import os
 import re
+import time
 import json
 import base64
 import logging
@@ -57,28 +58,45 @@ def exec_cmd(command: str, cwd: Optional[str] = None, timeout: int = 60) -> Tupl
         return -1, str(e)
 
 
-def download_file(dest_path: str, url: str) -> bool:
-    """Download binary file with chunked streaming and rollback on failure."""
-    try:
-        os.makedirs(os.path.dirname(os.path.abspath(dest_path)), exist_ok=True)
-        response = requests.get(url, stream=True, timeout=30)
-        response.raise_for_status()
+def download_file(dest_path: str, url: str, max_retries: int = 3) -> bool:
+    """Download binary file with chunked streaming, automatic retry, and rollback on failure."""
+    os.makedirs(os.path.dirname(os.path.abspath(dest_path)), exist_ok=True)
+    temp_path = f"{dest_path}.tmp"
 
-        with open(dest_path, "wb") as f:
-            for chunk in response.iter_content(chunk_size=16384):
-                if chunk:
-                    f.write(chunk)
+    for attempt in range(1, max_retries + 1):
+        try:
+            response = requests.get(url, stream=True, timeout=35)
+            response.raise_for_status()
 
-        logger.info(f"Verified component asset: {os.path.basename(dest_path)}")
-        return True
-    except Exception as e:
-        if os.path.exists(dest_path):
-            try:
-                os.remove(dest_path)
-            except OSError:
-                pass
-        logger.error(f"Failed to fetch component {os.path.basename(dest_path)}: {e}")
-        return False
+            with open(temp_path, "wb") as f:
+                for chunk in response.iter_content(chunk_size=32768):
+                    if chunk:
+                        f.write(chunk)
+
+            if os.path.isfile(temp_path) and os.path.getsize(temp_path) > 10240:
+                if os.path.exists(dest_path):
+                    try:
+                        os.remove(dest_path)
+                    except OSError:
+                        pass
+                os.rename(temp_path, dest_path)
+                logger.info(f"Verified component asset: {os.path.basename(dest_path)}")
+                return True
+            else:
+                raise ValueError("Downloaded file too small or incomplete")
+        except Exception as e:
+            if os.path.exists(temp_path):
+                try:
+                    os.remove(temp_path)
+                except OSError:
+                    pass
+            if attempt < max_retries:
+                logger.warning(f"Download attempt {attempt}/{max_retries} for {os.path.basename(dest_path)} failed: {e}. Retrying in {attempt * 2}s...")
+                time.sleep(attempt * 2)
+            else:
+                logger.error(f"Failed to fetch component {os.path.basename(dest_path)} after {max_retries} attempts: {e}")
+
+    return False
 
 
 def authorize_files(file_paths: List[str]) -> None:
@@ -94,22 +112,47 @@ def authorize_files(file_paths: List[str]) -> None:
 
 
 def get_server_ip(v4_host: str, v6_host: str) -> str:
-    """Query external IPv4 address with fallback to IPv6."""
+    """Query external IPv4 address with multi-source fallback to IPv6 and public IP discovery APIs."""
     headers = {"User-Agent": "curl/7.88.1"}
-    try:
-        resp = requests.get(f"https://{v4_host}", headers=headers, timeout=3)
-        if resp.status_code == 200 and resp.text.strip():
-            return resp.text.strip()
-    except Exception:
-        pass
+    ip_pattern = re.compile(r"^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$")
 
-    try:
-        resp = requests.get(f"https://{v6_host}", headers=headers, timeout=2)
-        if resp.status_code == 200 and resp.text.strip():
-            return f"[{resp.text.strip()}]"
-    except Exception:
-        pass
+    # 1. Primary IPv4 target
+    if v4_host:
+        try:
+            resp = requests.get(f"https://{v4_host}", headers=headers, timeout=3)
+            val = resp.text.strip()
+            if resp.status_code == 200 and ip_pattern.match(val):
+                return val
+        except Exception:
+            pass
 
+    # 2. Secondary public IP discovery endpoints
+    fallback_endpoints = [
+        "https://api.ipify.org",
+        "https://ifconfig.me/ip",
+        "https://icanhazip.com",
+        "https://checkip.amazonaws.com"
+    ]
+    for endpoint in fallback_endpoints:
+        try:
+            resp = requests.get(endpoint, headers=headers, timeout=3)
+            val = resp.text.strip()
+            if resp.status_code == 200 and ip_pattern.match(val):
+                return val
+        except Exception:
+            pass
+
+    # 3. IPv6 target fallback
+    if v6_host:
+        try:
+            resp = requests.get(f"https://{v6_host}", headers=headers, timeout=2)
+            val = resp.text.strip()
+            if resp.status_code == 200 and val:
+                return f"[{val}]"
+        except Exception:
+            pass
+
+    logger.warning("Unable to determine external public IP. Fallback to 127.0.0.1 (Ingress gateways such as Argo remain fully functional).")
     return "127.0.0.1"
 
 

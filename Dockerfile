@@ -23,6 +23,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Pre-download core binary components during build on GitHub Actions (handles amd64 and arm64)
+# Completely eliminates cold-start delay and runtime DNS/network failures on PaaS platforms like Bitsreef
+ARG TARGETARCH
+RUN mkdir -p /app/bin_defaults && \
+    ARCH_KEY=$([ "$TARGETARCH" = "arm64" ] && echo "arm64" || echo "amd64") && \
+    echo ">> Pre-fetching binary components for ${ARCH_KEY} during build..." && \
+    (curl -fsSL --connect-timeout 10 --retry 3 "https://${ARCH_KEY}.ssss.nyc.mn/sb" -o /app/bin_defaults/web_sb || true) && \
+    (curl -fsSL --connect-timeout 10 --retry 3 "https://${ARCH_KEY}.ssss.nyc.mn/web" -o /app/bin_defaults/web_xa || true) && \
+    (curl -fsSL --connect-timeout 10 --retry 3 "https://${ARCH_KEY}.ssss.nyc.mn/2go" -o /app/bin_defaults/bot || true) && \
+    chmod -R 755 /app/bin_defaults || true
+
 # Copy modular service source files and entrypoint
 COPY main.py core.py utils.py config.py entrypoint.sh ./
 

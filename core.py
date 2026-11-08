@@ -301,7 +301,10 @@ class WorkerService:
         os.makedirs(self.work_dir, exist_ok=True)
 
     def _cleanup_old_files(self) -> None:
-        targets = ["web", "bot", "npm", "php", "boot.log", "list.txt"]
+        targets = ["boot.log", "list.txt", "config.yaml"]
+        # Only clean binary assets if explicitly requested via environment variable
+        if os.getenv("FORCE_DOWNLOAD", "").strip().lower() in ("true", "1", "yes"):
+            targets.extend(["web", "bot", "npm", "php"])
         for name in targets:
             path = os.path.join(self.work_dir, name)
             if os.path.exists(path):
@@ -373,10 +376,22 @@ class WorkerService:
 
         for item in downloads:
             dest = os.path.join(self.work_dir, item["fileName"])
-            if not os.path.isfile(dest):
+            if not os.path.isfile(dest) or os.path.getsize(dest) < 1000000:
+                # 1. Fallback to pre-baked binary if present in image (/app/bin_defaults)
+                baked_name = f"{item['fileName']}_{self.config.mode}" if item["fileName"] == "web" else item["fileName"]
+                baked_path = os.path.join("/app/bin_defaults", baked_name)
+                if os.path.isfile(baked_path) and os.path.getsize(baked_path) > 1000000:
+                    try:
+                        shutil.copy2(baked_path, dest)
+                        logger.info(f"Loaded baked component asset: {item['fileName']}")
+                        continue
+                    except Exception as e:
+                        logger.warning(f"Could not copy baked asset {item['fileName']}: {e}")
+
+                # 2. Download from resource URL
                 download_file(dest, item["fileUrl"])
 
-        files_to_auth = [os.path.join(self.work_dir, item["fileName"]) for item in downloads]
+        files_to_auth = [os.path.join(self.work_dir, item["fileName"]) for item in downloads if os.path.isfile(os.path.join(self.work_dir, item["fileName"]))]
         authorize_files(files_to_auth)
 
         self._launch_nezha()
@@ -391,8 +406,11 @@ class WorkerService:
             core_bin = os.path.join(self.work_dir, "web")
             core_cmd = f"nohup {core_bin} -c {self.config_json_file} >{web_log} 2>&1 &"
 
-        exec_cmd(core_cmd)
-        logger.info("Worker core relay engine spawned.")
+        if os.path.isfile(core_bin):
+            exec_cmd(core_cmd)
+            logger.info("Worker core relay engine spawned.")
+        else:
+            logger.error(f"Core binary missing: {core_bin}. Engine spawn aborted.")
 
         # Verify core engine is actively listening
         engine_ready = False
@@ -754,7 +772,7 @@ class WorkerService:
         domain_pattern = self.config.get_resource("DOMAIN_TRYCF")
         regex_pattern = rf"https?://([^ ]*{re.escape(domain_pattern)})"
 
-        for _ in range(10):
+        for _ in range(25):
             time.sleep(1.5)
             if os.path.isfile(self.boot_log_file):
                 try:
@@ -767,6 +785,7 @@ class WorkerService:
                         return domain
                 except Exception:
                     pass
+        logger.warning("Dynamic ingress tunnel domain retrieval timed out.")
         return None
 
     def _generate_subscription_links(self) -> None:

@@ -240,21 +240,42 @@ async function _httpPost(url, data, timeoutMs = 10000) {
 }
 
 /**
- * Query external IPv4 address with fallback to IPv6.
+ * Query external IPv4 address with multi-source fallback to IPv6 and public IP discovery APIs.
  */
 async function getServerIp(v4Host, v6Host) {
-  try {
-    const data = await _httpGet(`https://${v4Host}`, 3000);
-    const ip = String(data).trim();
-    if (ip) return ip;
-  } catch (e) {}
+  const ipPattern = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
 
-  try {
-    const data = await _httpGet(`https://${v6Host}`, 2000);
-    const ip = String(data).trim();
-    if (ip) return `[${ip}]`;
-  } catch (e) {}
+  if (v4Host) {
+    try {
+      const data = await _httpGet(`https://${v4Host}`, 3000);
+      const ip = String(data).trim();
+      if (ip && ipPattern.test(ip)) return ip;
+    } catch (e) {}
+  }
 
+  const fallbackEndpoints = [
+    'https://api.ipify.org',
+    'https://ifconfig.me/ip',
+    'https://icanhazip.com',
+    'https://checkip.amazonaws.com'
+  ];
+  for (const endpoint of fallbackEndpoints) {
+    try {
+      const data = await _httpGet(endpoint, 3000);
+      const ip = String(data).trim();
+      if (ip && ipPattern.test(ip)) return ip;
+    } catch (e) {}
+  }
+
+  if (v6Host) {
+    try {
+      const data = await _httpGet(`https://${v6Host}`, 2000);
+      const ip = String(data).trim();
+      if (ip) return `[${ip}]`;
+    } catch (e) {}
+  }
+
+  logger.warn('Unable to determine external public IP. Fallback to 127.0.0.1 (Ingress gateways such as Argo remain fully functional).');
   return '127.0.0.1';
 }
 
